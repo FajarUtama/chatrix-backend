@@ -1,0 +1,28 @@
+services:
+  chatrix-be:
+    build: ../apps/chatrix-be
+    env_file:
+      - ../apps/chatrix-be/.env
+    depends_on:
+      - redis
+      - mosquitto
+      - minio
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"   # ❌ boleh dihapus kalau tidak perlu akses dari luar
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"   # ❌ boleh dihapus kalau tidak perlu akses dari luar
+    restart: unless-stopped

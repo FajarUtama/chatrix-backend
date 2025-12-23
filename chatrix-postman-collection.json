@@ -1,0 +1,670 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
+    "name": "Chatrix API",
+    "description": "Complete API collection for Chatrix - A social messaging platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-device-id",
+                "value": "{{deviceId}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone\": \"+1234567890\",\n    \"username\": \"johndoe\",\n    \"password\": \"secure123\",\n    \"full_name\": \"John Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Register a new user account"
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-device-id",
+                "value": "{{deviceId}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phoneOrUsername\": \"johndoe\",\n    \"password\": \"secure123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticate and get access token"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-device-id",
+                "value": "{{deviceId}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\\n    \\\"refresh_token\\\": \\\"{{refreshToken}}\\\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Get new access token using refresh token"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get Current User Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Get the profile of the currently authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "full_name",
+                  "value": "John Updated",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "johndoe_updated",
+                  "type": "text"
+                },
+                {
+                  "key": "bio",
+                  "value": "New bio here",
+                  "type": "text"
+                },
+                {
+                  "key": "website",
+                  "value": "https://updated.com",
+                  "type": "text"
+                },
+                {
+                  "key": "is_private",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "src": "/path/to/avatar.jpg"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "me"
+              ]
+            },
+            "description": "Update the current user's profile information"
+          },
+          "response": []
+        },
+        {
+          "name": "Get User by ID or Username",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/janedoe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "janedoe"
+              ]
+            },
+            "description": "Get public profile information for a specific user by ID or username"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Posts",
+      "item": [
+        {
+          "name": "Create Post",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "caption",
+                  "value": "Beautiful day at the beach! 🏖️",
+                  "type": "text"
+                },
+                {
+                  "key": "media",
+                  "type": "file",
+                  "src": "/path/to/beach.jpg"
+                },
+                {
+                  "key": "location",
+                  "value": "{\"name\":\"Bondi Beach\",\"lat\":-33.8908,\"lng\":151.2743}",
+                  "type": "text"
+                },
+                {
+                  "key": "is_private",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts"
+              ]
+            },
+            "description": "Create a new post with media"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Post by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/posts/70d5ec9f5824f70015a1c003",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts",
+                "70d5ec9f5824f70015a1c003"
+              ]
+            },
+            "description": "Get details of a specific post"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Feed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/posts/feed?limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "posts",
+                "feed"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get the authenticated user's feed (posts from followed users)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Get Conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat/conversations?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Get list of conversations for the current user"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chat/conversations/80d5ec9f5824f70015a1c004/messages?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "conversations",
+                "80d5ec9f5824f70015a1c004",
+                "messages"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Get messages in a specific conversation"
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"content\": \"Hello, how are you?\",\n    \"type\": \"text\",\n    \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chat/conversations/80d5ec9f5824f70015a1c004/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "chat",
+                "conversations",
+                "80d5ec9f5824f70015a1c004",
+                "messages"
+              ]
+            },
+            "description": "Send a new message to a conversation"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Stories",
+      "item": [
+        {
+          "name": "Create Story",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "media",
+                  "type": "file",
+                  "src": "/path/to/story.jpg"
+                },
+                {
+                  "key": "caption",
+                  "value": "My story!",
+                  "type": "text"
+                },
+                {
+                  "key": "expires_in",
+                  "value": "24",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stories"
+              ]
+            },
+            "description": "Create a new story"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Stories Feed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/stories/feed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stories",
+                "feed"
+              ]
+            },
+            "description": "Get stories from users that the current user follows"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Calls",
+      "item": [
+        {
+          "name": "Initiate Call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"recipient_id\": \"60d5ec9f5824f70015a1c002\",\n    \"type\": \"video\",\n    \"offer\": {\n        \"type\": \"offer\",\n        \"sdp\": \"v=0\\r\\no=- 123456789 2 IN IP4 127.0.0.1\\r\\n...\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/calls",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls"
+              ]
+            },
+            "description": "Initiate a new call to another user"
+          },
+          "response": []
+        },
+        {
+          "name": "Answer Call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"answer\": {\n        \"type\": \"answer\",\n        \"sdp\": \"v=0\\r\\no=- 987654321 2 IN IP4 127.0.0.1\\r\\n...\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/calls/d0d5ec9f5824f70015a1c013/answer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls",
+                "d0d5ec9f5824f70015a1c013",
+                "answer"
+              ]
+            },
+            "description": "Answer an incoming call"
+          },
+          "response": []
+        },
+        {
+          "name": "End Call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/calls/d0d5ec9f5824f70015a1c013/end",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "calls",
+                "d0d5ec9f5824f70015a1c013",
+                "end"
+              ]
+            },
+            "description": "End an ongoing call"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// You can add pre-request scripts here"
+        ],
+        "type": "text/javascript"
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "exec": [
+          "// You can add test scripts here"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deviceId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  }
+}
