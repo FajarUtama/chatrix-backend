@@ -1,24 +1,14 @@
-import { IsEmail, IsNotEmpty, IsString, Length, Matches, IsOptional } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class VerifyResetOtpDto {
+export class VerifyEmailDto {
     @ApiProperty({
-        description: 'Email address of the user',
+        description: 'Email address to verify',
         example: 'user@example.com',
     })
     @IsEmail({}, { message: 'Invalid email format' })
     @IsNotEmpty({ message: 'Email is required' })
     email!: string;
-
-    @ApiProperty({
-        description: 'Username of the user (optional, for additional verification)',
-        example: 'johndoe',
-        required: false,
-    })
-    @IsOptional()
-    @IsString()
-    @Matches(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores' })
-    username?: string;
 
     @ApiProperty({
         description: '6-digit OTP code',

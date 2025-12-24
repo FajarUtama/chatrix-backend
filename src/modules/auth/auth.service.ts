@@ -25,7 +25,7 @@ export class AuthService {
   ) { }
 
   async register(registerDto: RegisterDto, deviceId: string, avatar?: Express.Multer.File): Promise<{ user: any; access_token: string; refresh_token: string }> {
-    const { phone, username, password, full_name } = registerDto;
+    const { phone, username, password, full_name, email } = registerDto;
 
     // Check if phone already exists
     const existingPhone = await this.userModel.findOne({ phone }).exec();
@@ -37,6 +37,14 @@ export class AuthService {
     const existingUsername = await this.userModel.findOne({ username }).exec();
     if (existingUsername) {
       throw new ConflictException('Username already taken');
+    }
+
+    // Check if email already exists (if provided)
+    if (email) {
+      const existingEmail = await this.userModel.findOne({ email }).exec();
+      if (existingEmail) {
+        throw new ConflictException('Email already registered');
+      }
     }
 
     // Hash password
@@ -61,6 +69,7 @@ export class AuthService {
       username,
       password_hash: passwordHash,
       full_name: full_name || username,
+      ...(email && { email, email_verified: false }),
       ...(avatarUrl && { avatar_url: avatarUrl }),
     });
 
@@ -97,6 +106,7 @@ export class AuthService {
         username: user.username,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
+        email: user.email,
       },
       ...tokens,
     };
@@ -228,7 +238,21 @@ export class AuthService {
     };
   }
 
-  async verifyResetOtp(email: string, otpCode: string): Promise<{ valid: boolean }> {
+  async verifyResetOtp(email: string, username: string | undefined, otpCode: string): Promise<{ valid: boolean }> {
+    // If username is provided, verify both email and username match
+    if (username) {
+      const user = await this.userModel.findOne({ email, username }).exec();
+      if (!user) {
+        throw new UnauthorizedException('Invalid email or username');
+      }
+    } else {
+      // If username not provided, just verify email exists
+      const user = await this.userModel.findOne({ email }).exec();
+      if (!user) {
+        throw new UnauthorizedException('Email not found');
+      }
+    }
+
     const isValid = await this.otpService.verifyOtpByEmail(
       email,
       otpCode,
@@ -240,6 +264,7 @@ export class AuthService {
 
   async resetPassword(
     email: string,
+    username: string | undefined,
     otpCode: string,
     newPassword: string,
   ): Promise<{ message: string }> {
@@ -254,11 +279,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
 
-    // Find user
-    const user = await this.userModel.findOne({ email }).exec();
-
-    if (!user) {
-      throw new UnauthorizedException('User not found');
+    // Find user - if username provided, verify both email and username
+    let user;
+    if (username) {
+      user = await this.userModel.findOne({ email, username }).exec();
+      if (!user) {
+        throw new UnauthorizedException('Invalid email or username');
+      }
+    } else {
+      user = await this.userModel.findOne({ email }).exec();
+      if (!user) {
+        throw new UnauthorizedException('Email not found');
+      }
     }
 
     // Hash new password
@@ -274,6 +306,41 @@ export class AuthService {
     return {
       message: 'Password reset successful',
     };
+  }
+
+  async requestEmailVerification(userId: string, email: string): Promise<{ message: string }> {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    if (user.email !== email) {
+      throw new UnauthorizedException('Email does not match user account');
+    }
+    if (user.email_verified) {
+      throw new ConflictException('Email is already verified');
+    }
+    await this.otpService.generateOtpForEmail(email, 'email_verification');
+    return { message: 'Verification OTP sent to email' };
+  }
+
+  async verifyEmail(userId: string, email: string, otpCode: string): Promise<{ message: string }> {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    if (user.email !== email) {
+      throw new UnauthorizedException('Email does not match user account');
+    }
+    if (user.email_verified) {
+      throw new ConflictException('Email is already verified');
+    }
+    const isValid = await this.otpService.verifyOtpByEmail(email, otpCode, 'email_verification');
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+    user.email_verified = true;
+    await user.save();
+    return { message: 'Email verified successfully' };
   }
 }
 

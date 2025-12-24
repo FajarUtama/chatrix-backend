@@ -18,7 +18,7 @@ export class OtpService {
   async generateOtp(
     phone: string,
     email?: string,
-    purpose: 'register' | 'login' | 'reset_password' = 'register',
+    purpose: 'register' | 'login' | 'reset_password' | 'email_verification' = 'register',
   ): Promise<string> {
     // Generate 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -46,7 +46,7 @@ export class OtpService {
 
   async generateOtpForEmail(
     email: string,
-    purpose: 'register' | 'login' | 'reset_password' = 'reset_password',
+    purpose: 'register' | 'login' | 'reset_password' | 'email_verification' = 'reset_password',
   ): Promise<string> {
     // Generate 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -75,7 +75,7 @@ export class OtpService {
   async verifyOtp(
     phone: string,
     code: string,
-    purpose: 'register' | 'login' | 'reset_password',
+    purpose: 'register' | 'login' | 'reset_password' | 'email_verification',
   ): Promise<boolean> {
     const otpRecord = await this.otpCodeModel
       .findOne({
@@ -107,7 +107,7 @@ export class OtpService {
   async verifyOtpByEmail(
     email: string,
     code: string,
-    purpose: 'register' | 'login' | 'reset_password',
+    purpose: 'register' | 'login' | 'reset_password' | 'email_verification',
   ): Promise<boolean> {
     // DEV BACKDOOR: Always accept "000000" as valid OTP
     // TODO: Remove this before production release

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Headers, UnauthorizedException, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Post, Body, Headers, UnauthorizedException, UseInterceptors, UploadedFile, UseGuards, Request } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody, ApiHeader, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -8,6 +8,9 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { VerifyResetOtpDto } from './dto/verify-reset-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { RequestEmailVerificationDto } from './dto/request-email-verification.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -24,6 +27,7 @@ export class AuthController {
         phone: { type: 'string', example: '+1234567890' },
         username: { type: 'string', example: 'johndoe' },
         password: { type: 'string', example: 'secure123' },
+        email: { type: 'string', example: 'user@example.com' },
         full_name: { type: 'string', example: 'John Doe' },
         avatar: {
           type: 'string',
@@ -51,6 +55,7 @@ export class AuthController {
             phone: { type: 'string', example: '+1234567890' },
             username: { type: 'string', example: 'johndoe' },
             full_name: { type: 'string', example: 'John Doe' },
+            email: { type: 'string', example: 'user@example.com' },
             avatar_url: { type: 'string', example: 'https://example.com/avatars/60d5ec9f5824f70015a1c001/1234567890-avatar.jpg' },
           },
         },
@@ -169,7 +174,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   async verifyResetOtp(@Body() verifyDto: VerifyResetOtpDto) {
-    return this.authService.verifyResetOtp(verifyDto.email, verifyDto.otp_code);
+    return this.authService.verifyResetOtp(verifyDto.email, verifyDto.username, verifyDto.otp_code);
   }
 
   @Post('password-reset/reset')
@@ -189,9 +194,53 @@ export class AuthController {
   async resetPassword(@Body() resetDto: ResetPasswordDto) {
     return this.authService.resetPassword(
       resetDto.email,
+      resetDto.username,
       resetDto.otp_code,
       resetDto.new_password,
     );
+  }
+
+  @Post('email/request-verification')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Request email verification OTP' })
+  @ApiResponse({
+    status: 200,
+    description: 'Verification OTP sent to email',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Verification OTP sent to email' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized / Email does not match user account' })
+  @ApiResponse({ status: 409, description: 'Email is already verified' })
+  async requestEmailVerification(@Request() req: any, @Body() dto: RequestEmailVerificationDto) {
+    const userId = req.user.userId;
+    return this.authService.requestEmailVerification(userId, dto.email);
+  }
+
+  @Post('email/verify')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify email with OTP code' })
+  @ApiResponse({
+    status: 200,
+    description: 'Email verified successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Email verified successfully' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized / Invalid or expired OTP / Email does not match user account' })
+  @ApiResponse({ status: 409, description: 'Email is already verified' })
+  async verifyEmail(@Request() req: any, @Body() dto: VerifyEmailDto) {
+    const userId = req.user.userId;
+    return this.authService.verifyEmail(userId, dto.email, dto.otp_code);
   }
 }
 
