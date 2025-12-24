@@ -11,6 +11,7 @@ import { LoginDto } from './dto/login.dto';
 import { ConfigService } from '../../config/config.service';
 import { UserService } from '../user/user.service';
 import { MinioService } from '../../infrastructure/minio/minio.service';
+import { OtpService } from '../../infrastructure/otp/otp.service';
 
 @Injectable()
 export class AuthService {
@@ -20,6 +21,7 @@ export class AuthService {
     private configService: ConfigService,
     private userService: UserService,
     private minioService: MinioService,
+    private otpService: OtpService,
   ) { }
 
   async register(registerDto: RegisterDto, deviceId: string, avatar?: Express.Multer.File): Promise<{ user: any; access_token: string; refresh_token: string }> {
@@ -207,6 +209,70 @@ export class AuthService {
     return {
       access_token: accessToken,
       refresh_token: refreshToken,
+    };
+  }
+
+  async requestPasswordReset(email: string): Promise<{ message: string }> {
+    // Find user by email
+    const user = await this.userModel.findOne({ email }).exec();
+
+    if (!user) {
+      throw new UnauthorizedException('Email not found');
+    }
+
+    // Generate and send OTP
+    await this.otpService.generateOtpForEmail(email, 'reset_password');
+
+    return {
+      message: 'OTP sent to email',
+    };
+  }
+
+  async verifyResetOtp(email: string, otpCode: string): Promise<{ valid: boolean }> {
+    const isValid = await this.otpService.verifyOtpByEmail(
+      email,
+      otpCode,
+      'reset_password',
+    );
+
+    return { valid: isValid };
+  }
+
+  async resetPassword(
+    email: string,
+    otpCode: string,
+    newPassword: string,
+  ): Promise<{ message: string }> {
+    // Verify OTP one final time
+    const isValid = await this.otpService.verifyOtpByEmail(
+      email,
+      otpCode,
+      'reset_password',
+    );
+
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+
+    // Find user
+    const user = await this.userModel.findOne({ email }).exec();
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    user.password_hash = passwordHash;
+    await user.save();
+
+    // Invalidate all existing sessions for security
+    await this.sessionModel.deleteMany({ user_id: user._id.toString() }).exec();
+
+    return {
+      message: 'Password reset successful',
     };
   }
 }

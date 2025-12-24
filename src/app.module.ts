@@ -8,6 +8,7 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { MinioModule } from './infrastructure/minio/minio.module';
 import { FcmModule } from './infrastructure/fcm/fcm.module';
 import { OtpModule } from './infrastructure/otp/otp.module';
+import { EmailModule } from './infrastructure/email/email.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/user/user.module';
 import { SessionModule } from './modules/session/session.module';
@@ -39,6 +40,7 @@ import { ReportModule } from './modules/report/report.module';
     RedisModule,
     MinioModule,
     FcmModule,
+    EmailModule,
     OtpModule,
     AuthModule,
     UserModule,

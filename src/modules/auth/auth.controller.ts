@@ -5,6 +5,9 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { VerifyResetOtpDto } from './dto/verify-reset-otp.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -132,6 +135,63 @@ export class AuthController {
       throw new UnauthorizedException('Device ID required');
     }
     return this.authService.refreshToken(refreshTokenDto.refresh_token, deviceId);
+  }
+
+  @Post('password-reset/request')
+  @ApiOperation({ summary: 'Request password reset OTP' })
+  @ApiResponse({
+    status: 200,
+    description: 'OTP sent to email successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'OTP sent to email' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid email format' })
+  @ApiResponse({ status: 401, description: 'Email not found' })
+  async requestPasswordReset(@Body() requestDto: RequestPasswordResetDto) {
+    return this.authService.requestPasswordReset(requestDto.email);
+  }
+
+  @Post('password-reset/verify-otp')
+  @ApiOperation({ summary: 'Verify password reset OTP code' })
+  @ApiResponse({
+    status: 200,
+    description: 'OTP verification result',
+    schema: {
+      type: 'object',
+      properties: {
+        valid: { type: 'boolean', example: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input data' })
+  async verifyResetOtp(@Body() verifyDto: VerifyResetOtpDto) {
+    return this.authService.verifyResetOtp(verifyDto.email, verifyDto.otp_code);
+  }
+
+  @Post('password-reset/reset')
+  @ApiOperation({ summary: 'Reset password with verified OTP' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successful',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Password reset successful' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input data' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired OTP / User not found' })
+  async resetPassword(@Body() resetDto: ResetPasswordDto) {
+    return this.authService.resetPassword(
+      resetDto.email,
+      resetDto.otp_code,
+      resetDto.new_password,
+    );
   }
 }
 

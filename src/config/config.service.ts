@@ -3,7 +3,7 @@ import { ConfigService as NestConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ConfigService {
-  constructor(private nestConfigService: NestConfigService) {}
+  constructor(private nestConfigService: NestConfigService) { }
 
   get port(): number {
     return parseInt(this.nestConfigService.get<string>('PORT', '3000'), 10);
@@ -63,6 +63,30 @@ export class ConfigService {
 
   get otpProvider(): string {
     return this.nestConfigService.get<string>('OTP_PROVIDER', 'dummy');
+  }
+
+  get smtpHost(): string {
+    return this.nestConfigService.get<string>('SMTP_HOST', 'dummy');
+  }
+
+  get smtpPort(): number {
+    return parseInt(this.nestConfigService.get<string>('SMTP_PORT', '587'), 10);
+  }
+
+  get smtpUser(): string {
+    return this.nestConfigService.get<string>('SMTP_USER', '');
+  }
+
+  get smtpPassword(): string {
+    return this.nestConfigService.get<string>('SMTP_PASSWORD', '');
+  }
+
+  get smtpFromEmail(): string {
+    return this.nestConfigService.get<string>('SMTP_FROM_EMAIL', 'noreply@chatrix.com');
+  }
+
+  get smtpFromName(): string {
+    return this.nestConfigService.get<string>('SMTP_FROM_NAME', 'Chatrix');
   }
 }
 
