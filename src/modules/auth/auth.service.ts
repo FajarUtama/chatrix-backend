@@ -279,18 +279,15 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
 
-    // Find user - if username provided, verify both email and username
-    let user;
-    if (username) {
-      user = await this.userModel.findOne({ email, username }).exec();
-      if (!user) {
-        throw new UnauthorizedException('Invalid email or username');
-      }
-    } else {
-      user = await this.userModel.findOne({ email }).exec();
-      if (!user) {
-        throw new UnauthorizedException('Email not found');
-      }
+    // Find user by email first
+    const user = await this.userModel.findOne({ email }).exec();
+    if (!user) {
+      throw new UnauthorizedException('Email not found');
+    }
+
+    // If username is provided, verify it matches
+    if (username && user.username !== username) {
+      throw new UnauthorizedException('Invalid email or username');
     }
 
     // Hash new password
