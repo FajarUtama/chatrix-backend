@@ -10,6 +10,7 @@ import { ChatService } from '../chat/chat.service';
 import { StorageService, FileType } from '../storage/storage.service';
 import { UserService } from '../user/user.service';
 import { ConfigService } from '../../config/config.service';
+import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 
 @Injectable()
 export class PostService {
@@ -22,6 +23,7 @@ export class PostService {
     private storageService: StorageService,
     private userService: UserService,
     private configService: ConfigService,
+    private urlNormalizer: UrlNormalizerService,
   ) { }
 
   async createPost(
@@ -120,10 +122,10 @@ export class PostService {
             id: user._id,
             username: user.username,
             full_name: user.full_name || '',
-            avatar_url: user.avatar_url || ''
+            avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url)
           } : null,
           media: {
-            url: fullMediaUrl,
+            url: this.urlNormalizer.normalizeUrl(fullMediaUrl),
             type: post.media.type
           },
           caption: post.caption,
@@ -165,10 +167,10 @@ export class PostService {
         id: user._id,
         username: user.username,
         full_name: user.full_name || '',
-        avatar_url: user.avatar_url || ''
+        avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url)
       } : null,
       media: {
-        url: fullMediaUrl,
+        url: this.urlNormalizer.normalizeUrl(fullMediaUrl),
         type: post.media.type
       },
       caption: post.caption,
@@ -249,7 +251,7 @@ export class PostService {
             id: user._id,
             username: user.username,
             full_name: user.full_name || '',
-            avatar_url: user.avatar_url || ''
+            avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url)
           } : null,
           text: comment.text,
           type: comment.type,

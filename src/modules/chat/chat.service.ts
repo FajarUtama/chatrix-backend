@@ -7,6 +7,7 @@ import { MqttService } from '../../infrastructure/mqtt/mqtt.service';
 import { UserService } from '../user/user.service';
 import { BlockService } from '../block/block.service';
 import { ContactService } from '../contact/contact.service';
+import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 
 @Injectable()
 export class ChatService {
@@ -19,6 +20,7 @@ export class ChatService {
     private userService: UserService,
     private blockService: BlockService,
     private contactService: ContactService,
+    private urlNormalizer: UrlNormalizerService,
   ) { }
 
   async createOrGetDirectConversation(userId1: string, userId2: string): Promise<ConversationDocument> {
@@ -260,7 +262,7 @@ export class ChatService {
             contact_name: contactName, // Specific contact name field
             full_name: contactFullName, // Original full name
             username: contactUsername,
-            avatar_url: contactAvatarUrl,
+            avatar_url: this.urlNormalizer.normalizeUrl(contactAvatarUrl),
           },
           last_message_at: conv.last_message_at,
           last_message_preview: conv.last_message_preview,

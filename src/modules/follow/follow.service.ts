@@ -3,12 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Follow, FollowDocument } from './schemas/follow.schema';
 import { UserService } from '../user/user.service';
+import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 
 @Injectable()
 export class FollowService {
   constructor(
     @InjectModel(Follow.name) private followModel: Model<FollowDocument>,
     private userService: UserService,
+    private urlNormalizer: UrlNormalizerService,
   ) { }
 
   async follow(followerId: string, username: string): Promise<void> {
@@ -48,7 +50,7 @@ export class FollowService {
       id: user._id.toString(),
       username: user.username,
       full_name: user.full_name,
-      avatar_url: user.avatar_url,
+      avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url),
     }));
   }
 
@@ -60,8 +62,7 @@ export class FollowService {
       id: user._id.toString(),
       username: user.username,
       full_name: user.full_name,
-      avatar_url: user.avatar_url,
+      avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url),
     }));
   }
 }
-

@@ -3,15 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { Session, SessionDocument } from '../session/schemas/session.schema';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ConfigService } from '../../config/config.service';
-import { UserService } from '../user/user.service';
 import { MinioService } from '../../infrastructure/minio/minio.service';
 import { OtpService } from '../../infrastructure/otp/otp.service';
+import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 
 @Injectable()
 export class AuthService {
@@ -19,9 +18,9 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Session.name) private sessionModel: Model<SessionDocument>,
     private configService: ConfigService,
-    private userService: UserService,
     private minioService: MinioService,
     private otpService: OtpService,
+    private urlNormalizer: UrlNormalizerService,
   ) { }
 
   async register(registerDto: RegisterDto, deviceId: string, avatar?: Express.Multer.File): Promise<{ user: any; access_token: string; refresh_token: string }> {
@@ -105,7 +104,7 @@ export class AuthService {
         phone: user.phone,
         username: user.username,
         full_name: user.full_name,
-        avatar_url: user.avatar_url,
+        avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url),
         email: user.email,
       },
       ...tokens,
@@ -143,7 +142,7 @@ export class AuthService {
         phone: user.phone,
         username: user.username,
         full_name: user.full_name,
-        avatar_url: user.avatar_url,
+        avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url),
       },
       ...tokens,
     };

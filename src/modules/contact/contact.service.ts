@@ -3,12 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Contact, ContactDocument } from './schemas/contact.schema';
 import { UserService } from '../user/user.service';
+import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 
 @Injectable()
 export class ContactService {
   constructor(
     @InjectModel(Contact.name) private contactModel: Model<ContactDocument>,
     private userService: UserService,
+    private urlNormalizer: UrlNormalizerService,
   ) { }
 
   async syncContacts(ownerId: string, phoneNumbers: string[]): Promise<void> {
@@ -51,7 +53,7 @@ export class ContactService {
         username: user.username,
         full_name: user.full_name, // Nama asli dari akun
         contact_name: contact?.contact_name, // Nama yang diberikan oleh penyimpan kontak
-        avatar_url: avatarUrl,
+        avatar_url: this.urlNormalizer.normalizeUrl(avatarUrl),
         phone: user.phone,
       };
     });
@@ -154,7 +156,7 @@ export class ContactService {
       id: user._id,
       username: user.username,
       full_name: user.full_name || name,
-      avatar_url: user.avatar_url,
+      avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url),
       phone: user.phone,
       email: user.email,
       contact_name: name

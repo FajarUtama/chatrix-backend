@@ -5,6 +5,7 @@ import { Story, StoryDocument, StoryMedia } from './schemas/story.schema';
 import { StoryView, StoryViewDocument } from './schemas/story-view.schema';
 import { FollowService } from '../follow/follow.service';
 import { UserService } from '../user/user.service';
+import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 
 @Injectable()
 export class StoryService {
@@ -13,6 +14,7 @@ export class StoryService {
     @InjectModel(StoryView.name) private storyViewModel: Model<StoryViewDocument>,
     private followService: FollowService,
     private userService: UserService,
+    private urlNormalizer: UrlNormalizerService,
   ) { }
 
   async createStory(storyData: {
@@ -92,11 +94,11 @@ export class StoryService {
           id: user._id,
           username: user.username,
           full_name: user.full_name,
-          avatar_url: user.avatar_url
+          avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url)
         } : null,
         media: {
           ...story.media,
-          url: mediaUrl
+          url: this.urlNormalizer.normalizeUrl(mediaUrl)
         },
         caption: story.caption,
         visibility: story.visibility,
@@ -148,7 +150,7 @@ export class StoryService {
           id: user._id,
           username: user.username,
           full_name: user.full_name,
-          avatar_url: user.avatar_url
+          avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url)
         } : null,
         viewed_at: record.viewed_at
       };
@@ -199,7 +201,7 @@ export class StoryService {
             id: user._id,
             username: user.username,
             full_name: user.full_name,
-            avatar_url: user.avatar_url
+            avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url)
           });
         }
       });
@@ -234,7 +236,7 @@ export class StoryService {
           user: user || null,
           media: {
             ...story.media,
-            url: mediaUrl
+            url: this.urlNormalizer.normalizeUrl(mediaUrl)
           },
           caption: story.caption,
           visibility: story.visibility,
