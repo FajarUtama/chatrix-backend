@@ -279,8 +279,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
 
-    // Find user by email first
-    const user = await this.userModel.findOne({ email }).exec();
+    // Find user by email first (case-insensitive)
+    console.log('🔍 DEBUG: Searching for user with email:', email);
+    console.log('🔍 DEBUG: Email type:', typeof email);
+    console.log('🔍 DEBUG: Email length:', email?.length);
+    const user = await this.userModel.findOne({
+      email: { $regex: new RegExp(`^${email}$`, 'i') }
+    }).exec();
+    console.log('🔍 DEBUG: User found:', user ? 'YES' : 'NO');
+    if (user) {
+      console.log('🔍 DEBUG: User email from DB:', user.email);
+      console.log('🔍 DEBUG: User username from DB:', user.username);
+    }
     if (!user) {
       throw new UnauthorizedException('Email not found');
     }
