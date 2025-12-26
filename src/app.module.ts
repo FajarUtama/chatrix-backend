@@ -24,6 +24,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { BlockModule } from './modules/block/block.module';
 import { ReportModule } from './modules/report/report.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { ReportModule } from './modules/report/report.module';
     AdminModule,
     BlockModule,
     ReportModule,
+    HealthModule,
   ],
 })
 export class AppModule { }
