@@ -49,6 +49,7 @@ export class ConfigService {
       accessKey: this.nestConfigService.get<string>('MINIO_ACCESS_KEY', 'minioadmin'),
       secretKey: this.nestConfigService.get<string>('MINIO_SECRET_KEY', 'minioadmin'),
       cdnUrl: this.nestConfigService.get<string>('MINIO_CDN_URL', ''),
+      publicEndpoint: this.nestConfigService.get<string>('MINIO_PUBLIC_ENDPOINT', ''),
       defaultBucket: this.nestConfigService.get<string>('MINIO_DEFAULT_BUCKET', 'chatrix-media'),
     };
   }

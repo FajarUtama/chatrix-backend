@@ -25,11 +25,13 @@ import { AdminModule } from './modules/admin/admin.module';
 import { BlockModule } from './modules/block/block.module';
 import { ReportModule } from './modules/report/report.module';
 import { HealthModule } from './modules/health/health.module';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     AppConfigModule,
+    CommonModule,
     MongooseModule.forRootAsync({
       imports: [AppConfigModule],
       useFactory: (configService: ConfigService) => ({

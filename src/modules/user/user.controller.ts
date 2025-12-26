@@ -4,13 +4,17 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 
 @ApiTags('Users')
 @ApiBearerAuth('JWT-auth')
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UserController {
-  constructor(private readonly userService: UserService) { }
+  constructor(
+    private readonly userService: UserService,
+    private readonly urlNormalizer: UrlNormalizerService,
+  ) { }
 
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
@@ -44,7 +48,7 @@ export class UserController {
       phone: userDoc.phone,
       username: userDoc.username,
       full_name: userDoc.full_name,
-      avatar_url: userDoc.avatar_url,
+      avatar_url: this.urlNormalizer.normalizeUrl(userDoc.avatar_url),
       bio: userDoc.bio,
       email: userDoc.email,
       email_verified: userDoc.email_verified,
@@ -117,7 +121,7 @@ export class UserController {
       phone: updated.phone,
       username: updated.username,
       full_name: updated.full_name,
-      avatar_url: updated.avatar_url,
+      avatar_url: this.urlNormalizer.normalizeUrl(updated.avatar_url),
       bio: updated.bio,
     };
   }
@@ -155,7 +159,7 @@ export class UserController {
       phone: user.phone,
       username: user.username,
       full_name: user.full_name,
-      avatar_url: user.avatar_url,
+      avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url),
       bio: user.bio,
     }));
   }
@@ -193,7 +197,7 @@ export class UserController {
       phone: user.phone,
       username: user.username,
       full_name: user.full_name,
-      avatar_url: user.avatar_url,
+      avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url),
       bio: user.bio,
     };
   }

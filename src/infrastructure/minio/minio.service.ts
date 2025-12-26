@@ -130,14 +130,20 @@ export class MinioService implements OnModuleInit {
 
   private getPublicUrl(key: string): string {
     const config = this.configService.minioConfig;
+
     // If CDN URL is configured, use that
     if (config.cdnUrl) {
       return `${config.cdnUrl}/${this.defaultBucket}/${key}`;
     }
+
     // Otherwise, construct URL from MinIO config
     const protocol = config.useSSL ? 'https' : 'http';
     const port = config.port ? `:${config.port}` : '';
-    return `${protocol}://${config.endPoint}${port}/${this.defaultBucket}/${key}`;
+
+    // Use publicEndpoint if configured, otherwise use endPoint
+    const endpoint = config.publicEndpoint || config.endPoint;
+
+    return `${protocol}://${endpoint}${port}/${this.defaultBucket}/${key}`;
   }
 
   getClient(): Minio.Client {
