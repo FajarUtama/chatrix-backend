@@ -400,6 +400,9 @@ export class AuthService {
 
   async getDbInfo(): Promise<any> {
     const connection = this.userModel.db;
+    if (!connection.db) {
+      return { error: 'Database connection not available' };
+    }
     const collections = await connection.db.listCollections().toArray();
     const userCount = await this.userModel.countDocuments().exec();
     const usersWithEmail = await this.userModel.countDocuments({ email: { $exists: true, $ne: null } }).exec();
