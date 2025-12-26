@@ -397,5 +397,20 @@ export class AuthService {
       })),
     };
   }
+
+  async getDbInfo(): Promise<any> {
+    const connection = this.userModel.db;
+    const collections = await connection.db.listCollections().toArray();
+    const userCount = await this.userModel.countDocuments().exec();
+    const usersWithEmail = await this.userModel.countDocuments({ email: { $exists: true, $ne: null } }).exec();
+
+    return {
+      database_name: connection.db.databaseName,
+      connection_host: connection.host,
+      collections: collections.map(c => c.name),
+      total_users: userCount,
+      users_with_email: usersWithEmail,
+    };
+  }
 }
 

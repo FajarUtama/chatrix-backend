@@ -299,5 +299,15 @@ export class AuthController {
   async listEmails() {
     return this.authService.listAllEmails();
   }
+
+  @Post('debug/db-info')
+  @ApiOperation({ summary: '[DEBUG] Show database connection info' })
+  @ApiResponse({
+    status: 200,
+    description: 'Database connection information',
+  })
+  async getDbInfo() {
+    return this.authService.getDbInfo();
+  }
 }
 
