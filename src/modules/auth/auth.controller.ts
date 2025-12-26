@@ -242,5 +242,62 @@ export class AuthController {
     const userId = req.user.userId;
     return this.authService.verifyEmail(userId, dto.email, dto.otp_code);
   }
+
+  // DEBUG ENDPOINTS - Remove before production
+  @Post('debug/check-email')
+  @ApiOperation({ summary: '[DEBUG] Check if email exists in database' })
+  @ApiResponse({
+    status: 200,
+    description: 'Email check result',
+    schema: {
+      type: 'object',
+      properties: {
+        exists: { type: 'boolean', example: true },
+        query_used: { type: 'string', example: 'case-insensitive' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+            username: { type: 'string' },
+            full_name: { type: 'string' },
+            email_verified: { type: 'boolean' },
+          },
+        },
+      },
+    },
+  })
+  async checkEmail(@Body() body: { email: string }) {
+    return this.authService.checkEmailExists(body.email);
+  }
+
+  @Post('debug/list-emails')
+  @ApiOperation({ summary: '[DEBUG] List all emails in database' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of all emails',
+    schema: {
+      type: 'object',
+      properties: {
+        total: { type: 'number', example: 10 },
+        emails: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              email: { type: 'string' },
+              username: { type: 'string' },
+              full_name: { type: 'string' },
+              email_verified: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+  })
+  async listEmails() {
+    return this.authService.listAllEmails();
+  }
 }
 
