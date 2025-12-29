@@ -337,9 +337,12 @@ export class ChatService {
     // Automatically mark messages as read when user opens/views the chat
     // Only mark as read if this is the first page (no 'before' parameter)
     // This prevents marking old messages as read when paginating
+    // IMPORTANT: This ensures real-time mark as read every time user views the latest messages
     if (!before) {
       try {
+        // Mark as read immediately - this will trigger MQTT publish for real-time updates
         await this.markMessagesAsRead(conversationId, userId);
+        this.logger.debug(`Auto-marked messages as read for conversationId=${conversationId}, userId=${userId}`);
       } catch (error) {
         // Log error but don't fail the request
         this.logger.warn(`Failed to auto-mark messages as read: ${error instanceof Error ? error.message : 'Unknown error'}`);

@@ -199,7 +199,7 @@ export class ChatController {
   @Post('conversations/:id/read')
   @ApiOperation({ 
     summary: 'Mark all messages in conversation as read',
-    description: 'Manually mark all messages in a conversation as read. Note: This endpoint is now optional as messages are automatically marked as read when opening a chat via GET /chat/conversations/:id/messages (without "before" parameter) or POST /chat/conversations/ensure. This endpoint is still available for special use cases.'
+    description: 'Manually mark all messages in a conversation as read. This endpoint can be called anytime to mark messages as read in real-time, especially useful when user is already in detail chat. Note: Messages are also automatically marked as read when opening a chat via GET /chat/conversations/:id/messages (without "before" parameter) or POST /chat/conversations/ensure.'
   })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
   @ApiResponse({
@@ -221,6 +221,43 @@ export class ChatController {
     @Param('id') conversationId: string,
   ) {
     try {
+      await this.chatService.markMessagesAsRead(conversationId, user.userId);
+      return {
+        success: true,
+        message: 'Messages marked as read',
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to mark as read';
+      throw new BadRequestException(errorMessage);
+    }
+  }
+
+  @Post('conversations/:id/view')
+  @ApiOperation({ 
+    summary: 'Mark conversation as viewed (real-time mark as read)',
+    description: 'Mark all messages in a conversation as read when user views the chat. This endpoint is designed to be called in real-time when user is viewing the chat detail, ensuring messages are marked as read immediately without needing to reload or exit the chat. This is especially useful for real-time mark as read functionality.'
+  })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Messages marked as read in real-time',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Messages marked as read' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Not a participant in this conversation' })
+  @ApiResponse({ status: 404, description: 'Conversation not found' })
+  async viewConversation(
+    @CurrentUser() user: { userId: string },
+    @Param('id') conversationId: string,
+  ) {
+    try {
+      // Mark as read immediately - this will trigger MQTT publish for real-time updates
       await this.chatService.markMessagesAsRead(conversationId, user.userId);
       return {
         success: true,
