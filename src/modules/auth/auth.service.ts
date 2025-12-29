@@ -150,8 +150,8 @@ export class AuthService {
 
   async refreshToken(refreshToken: string, deviceId: string): Promise<{ access_token: string; refresh_token: string }> {
     try {
-      // Verify refresh token
-      const decoded = jwt.verify(refreshToken, this.configService.jwtRefreshSecret) as { userId: string; deviceId: string };
+      // Verify refresh token JWT signature and expiration
+      const decoded = jwt.verify(refreshToken, this.configService.jwtRefreshSecret) as { userId: string; deviceId: string; iat?: number; exp?: number };
 
       if (decoded.deviceId !== deviceId) {
         throw new UnauthorizedException('Invalid device');
@@ -167,16 +167,32 @@ export class AuthService {
         throw new UnauthorizedException('Session not found');
       }
 
+      // Verify refresh token hash matches stored hash (security check)
+      const isTokenValid = await bcrypt.compare(refreshToken, session.refresh_token_hash);
+      if (!isTokenValid) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       // Check if session expired
       if (new Date() > session.expires_at) {
         throw new UnauthorizedException('Session expired');
       }
 
-      // Generate new tokens
+      // Generate new tokens (this will also update session with new refresh token)
+      // This implements "sliding session" - session expiration is extended on each refresh
       const tokens = await this.generateTokens(decoded.userId, deviceId);
 
       return tokens;
     } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      if (error instanceof jwt.TokenExpiredError) {
+        throw new UnauthorizedException('Refresh token expired');
+      }
+      if (error instanceof jwt.JsonWebTokenError) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
@@ -199,9 +215,10 @@ export class AuthService {
     // Hash refresh token for storage
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
 
-    // Calculate expiration date (30 days from now)
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
+    // Calculate expiration date based on refresh token expiration
+    // Parse JWT_REFRESH_EXPIRES_IN (e.g., "30d", "7d", "1h")
+    const refreshExpiresIn = this.configService.jwtRefreshExpiresIn;
+    const expiresAt = this.calculateExpirationDate(refreshExpiresIn);
 
     // Save or update session
     await this.sessionModel.findOneAndUpdate(
@@ -347,6 +364,44 @@ export class AuthService {
     user.email_verified = true;
     await user.save();
     return { message: 'Email verified successfully' };
+  }
+
+  /**
+   * Calculate expiration date from JWT expiresIn string
+   * Supports: s (seconds), m (minutes), h (hours), d (days)
+   * Example: "30d" = 30 days, "1h" = 1 hour, "15m" = 15 minutes
+   */
+  private calculateExpirationDate(expiresIn: string): Date {
+    const expiresAt = new Date();
+    const match = expiresIn.match(/^(\d+)([smhd])$/);
+    
+    if (!match) {
+      // Default to 30 days if format is invalid
+      expiresAt.setDate(expiresAt.getDate() + 30);
+      return expiresAt;
+    }
+
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+
+    switch (unit) {
+      case 's':
+        expiresAt.setSeconds(expiresAt.getSeconds() + value);
+        break;
+      case 'm':
+        expiresAt.setMinutes(expiresAt.getMinutes() + value);
+        break;
+      case 'h':
+        expiresAt.setHours(expiresAt.getHours() + value);
+        break;
+      case 'd':
+        expiresAt.setDate(expiresAt.getDate() + value);
+        break;
+      default:
+        expiresAt.setDate(expiresAt.getDate() + 30);
+    }
+
+    return expiresAt;
   }
 }
 

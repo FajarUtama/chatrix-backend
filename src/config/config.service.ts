@@ -22,11 +22,13 @@ export class ConfigService {
   }
 
   get jwtAccessExpiresIn(): string {
-    return this.nestConfigService.get<string>('JWT_ACCESS_EXPIRES_IN', '15m');
+    // Default: 7 days for chat app (user can open app anytime within 7 days without refresh)
+    return this.nestConfigService.get<string>('JWT_ACCESS_EXPIRES_IN', '7d');
   }
 
   get jwtRefreshExpiresIn(): string {
-    return this.nestConfigService.get<string>('JWT_REFRESH_EXPIRES_IN', '30d');
+    // Default: 90 days (3 months) for better UX in chat app that's not always opened
+    return this.nestConfigService.get<string>('JWT_REFRESH_EXPIRES_IN', '90d');
   }
 
   get redisHost(): string {

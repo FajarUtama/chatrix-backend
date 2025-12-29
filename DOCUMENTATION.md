@@ -538,7 +538,7 @@ Let me check the user module to document the user-related endpoints.
 
 **Endpoint:** `POST /chat/messages`
 
-**Description:** Send a new message to a conversation.
+**Description:** Send a new message to a conversation. **Note:** The message is immediately published via MQTT to the recipient for real-time delivery. The recipient will receive the message in real-time through MQTT topic `chat/{recipientId}/messages` without needing to refresh or reload.
 
 **Headers:**
 - `Authorization`: Bearer token
@@ -549,6 +549,7 @@ Let me check the user module to document the user-related endpoints.
 {
   "conversationId": "80d5ec9f5824f70015a1c004",
   "content": "This is a new message",
+  "type": "text",
   "attachments": [] // Optional array of media attachments
 }
 ```
@@ -567,11 +568,191 @@ Let me check the user module to document the user-related endpoints.
 }
 ```
 
+**Real-Time Delivery:**
+- Message is immediately published to MQTT topic `chat/{recipientId}/messages`
+- Conversation update is published to `chat/{recipientId}/conversations` for real-time list update
+- Recipient receives message in real-time without delay
+
 **Error Responses:**
 - 400 Bad Request: Invalid message content
 - 401 Unauthorized: Not authenticated
+- 403 Forbidden: Not a participant in this conversation or blocked
+- 404 Not Found: Conversation not found
+
+---
+
+### 5. Mark Conversation as Read
+
+**Endpoint:** `POST /chat/conversations/:id/read`
+
+**Description:** Manually mark all messages in a conversation as read. This endpoint can be called anytime to mark messages as read in real-time. **Note:** Messages are also automatically marked as read when opening a chat via `GET /chat/conversations/:id/messages` (without "before" parameter) or `POST /chat/conversations/ensure`. This endpoint is still available for special use cases.
+
+**Headers:**
+- `Authorization`: Bearer token
+
+**Path Parameters:**
+- `id`: ID of the conversation
+
+**Response (Success - 200 OK):**
+```json
+{
+  "success": true,
+  "message": "Messages marked as read"
+}
+```
+
+**Real-Time Updates:**
+When messages are marked as read, the following MQTT topics are published:
+- `chat/{senderId}/read-receipts` - Read receipt for sender (status update in detail chat)
+- `chat/{userId}/messages-status` - Status update for reader (status update in detail chat)
+- `chat/{participantId}/conversations` - Conversation update for all participants (unread count update in list)
+
+**Error Responses:**
+- 401 Unauthorized: Not authenticated
 - 403 Forbidden: Not a participant in this conversation
 - 404 Not Found: Conversation not found
+
+---
+
+### 6. View Conversation (Real-Time Mark as Read)
+
+**Endpoint:** `POST /chat/conversations/:id/view`
+
+**Description:** Mark all messages in a conversation as read when user views the chat. This endpoint is designed to be called in real-time when user is viewing the chat detail, ensuring messages are marked as read immediately without needing to reload or exit the chat. This is especially useful for real-time mark as read functionality. **Recommended:** Call this endpoint periodically (e.g., every 3-5 seconds) while user is viewing the chat detail.
+
+**Headers:**
+- `Authorization`: Bearer token
+
+**Path Parameters:**
+- `id`: ID of the conversation
+
+**Response (Success - 200 OK):**
+```json
+{
+  "success": true,
+  "message": "Messages marked as read"
+}
+```
+
+**Real-Time Updates:**
+Same as endpoint 5 (Mark Conversation as Read) - publishes to 3 MQTT topics for real-time updates.
+
+**Use Case:**
+- Call this endpoint when user opens chat detail screen
+- Poll this endpoint every 3-5 seconds while user is viewing the chat
+- Ensures messages are marked as read in real-time without user needing to reload
+
+**Error Responses:**
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Not a participant in this conversation
+- 404 Not Found: Conversation not found
+
+---
+
+### 7. Real-Time Updates via MQTT
+
+The chat system uses MQTT for real-time message and status updates. Frontend applications should subscribe to the following MQTT topics:
+
+#### 7.1 New Message
+**Topic:** `chat/{userId}/messages`
+
+**Payload:**
+```json
+{
+  "conversation_id": "80d5ec9f5824f70015a1c004",
+  "message": {
+    "id": "90d5ec9f5824f70015a1c007",
+    "sender_id": "60d5ec9f5824f70015a1c001",
+    "type": "text",
+    "text": "Hello!",
+    "media": null,
+    "status": "sent",
+    "created_at": "2023-04-10T19:00:00.000Z"
+  }
+}
+```
+
+**When:** Sent immediately after a new message is created
+
+**Use Case:** Display new message in real-time in chat detail
+
+---
+
+#### 7.2 Read Receipt (for Sender)
+**Topic:** `chat/{userId}/read-receipts`
+
+**Payload:**
+```json
+{
+  "conversation_id": "80d5ec9f5824f70015a1c004",
+  "read_by": "60d5ec9f5824f70015a1c002",
+  "read_at": "2023-04-10T19:00:00.000Z",
+  "count": 5
+}
+```
+
+**When:** Sent immediately after messages are marked as read
+
+**Use Case:** Update message status from "sent"/"delivered" to "read" in sender's chat detail
+
+---
+
+#### 7.3 Message Status Update (for Reader)
+**Topic:** `chat/{userId}/messages-status`
+
+**Payload:**
+```json
+{
+  "conversation_id": "80d5ec9f5824f70015a1c004",
+  "action": "marked_as_read",
+  "read_by": "60d5ec9f5824f70015a1c002",
+  "read_at": "2023-04-10T19:00:00.000Z",
+  "count": 5
+}
+```
+
+**When:** Sent immediately after messages are marked as read
+
+**Use Case:** Update message status in reader's chat detail (optional)
+
+---
+
+#### 7.4 Conversation Update (for List Chat)
+**Topic:** `chat/{userId}/conversations`
+
+**Payload (New Message):**
+```json
+{
+  "conversation_id": "80d5ec9f5824f70015a1c004",
+  "last_message_at": "2023-04-10T19:00:00.000Z",
+  "last_message_preview": "Hello!",
+  "action": "updated"
+}
+```
+
+**Payload (Mark as Read):**
+```json
+{
+  "conversation_id": "80d5ec9f5824f70015a1c004",
+  "action": "messages_read",
+  "read_by": "60d5ec9f5824f70015a1c002",
+  "read_at": "2023-04-10T19:00:00.000Z",
+  "unread_count": 0
+}
+```
+
+**When:** 
+- Sent after new message is created (action: "updated")
+- Sent after messages are marked as read (action: "messages_read")
+
+**Use Case:** Update conversation list (last message, unread count, badge) in real-time
+
+---
+
+**MQTT Configuration:**
+- **QoS:** 1 (At least once delivery - guaranteed delivery)
+- **Retain:** false (Immediate delivery only, no persistence)
+- **Connection:** Auto-reconnect enabled with 5 second interval
 
 ---
 
