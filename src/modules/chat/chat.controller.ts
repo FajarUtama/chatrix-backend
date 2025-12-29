@@ -12,7 +12,10 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) { }
 
   @Post('conversations/ensure')
-  @ApiOperation({ summary: 'Ensure conversation exists' })
+  @ApiOperation({ 
+    summary: 'Ensure conversation exists',
+    description: 'Ensure a direct conversation exists with a user. If it exists, returns it. If not, creates a new one. Messages are automatically marked as read when this endpoint is called (when opening an existing conversation).'
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -153,10 +156,22 @@ export class ChatController {
   }
 
   @Get('conversations/:id/messages')
-  @ApiOperation({ summary: 'Get messages in a conversation' })
+  @ApiOperation({ 
+    summary: 'Get messages in a conversation',
+    description: 'Get messages in a specific conversation. Messages are automatically marked as read when this endpoint is called without the "before" parameter (first page only). When paginating with "before" parameter, messages will not be automatically marked as read.'
+  })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiQuery({ name: 'limit', description: 'Number of messages to return (default: 20, max: 50)', required: false, type: Number })
-  @ApiQuery({ name: 'before', description: 'Cursor for pagination (message ID)', required: false })
+  @ApiQuery({ 
+    name: 'limit', 
+    description: 'Number of messages to return (default: 20, max: 50)', 
+    required: false, 
+    type: Number 
+  })
+  @ApiQuery({ 
+    name: 'before', 
+    description: 'Cursor for pagination (message ID). If not provided, messages will be automatically marked as read. If provided, messages will NOT be automatically marked as read (for pagination).', 
+    required: false 
+  })
   @ApiResponse({
     status: 200,
     description: 'Messages retrieved successfully',
@@ -182,7 +197,10 @@ export class ChatController {
   }
 
   @Post('conversations/:id/read')
-  @ApiOperation({ summary: 'Mark all messages in conversation as read' })
+  @ApiOperation({ 
+    summary: 'Mark all messages in conversation as read',
+    description: 'Manually mark all messages in a conversation as read. Note: This endpoint is now optional as messages are automatically marked as read when opening a chat via GET /chat/conversations/:id/messages (without "before" parameter) or POST /chat/conversations/ensure. This endpoint is still available for special use cases.'
+  })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
   @ApiResponse({
     status: 200,

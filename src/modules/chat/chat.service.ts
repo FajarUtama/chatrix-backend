@@ -386,7 +386,7 @@ export class ChatService {
       this.mqttService.publish(`chat/${senderId}/read-receipts`, {
         conversation_id: conversationId,
         read_by: userId,
-        read_at: now,
+        read_at: now.toISOString(), // Ensure ISO string format
         count: result.modifiedCount
       });
       this.logger.debug(`Published read receipt to chat/${senderId}/read-receipts`);
