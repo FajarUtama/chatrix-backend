@@ -115,6 +115,15 @@ export class ChatService {
       }
     }
 
+    // Automatically mark messages as read when user opens/ensures conversation
+    // This handles the case when user opens chat from conversation list
+    try {
+      await this.markMessagesAsRead(conversation._id.toString(), currentUserId);
+    } catch (error) {
+      // Log error but don't fail the request
+      this.logger.warn(`Failed to auto-mark messages as read in ensureConversation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
     return {
       id: conversation._id,
       isGroup: conversation.type === 'group',
@@ -302,6 +311,18 @@ export class ChatService {
     }
 
     const messages = await query.limit(limit).exec();
+
+    // Automatically mark messages as read when user opens/views the chat
+    // Only mark as read if this is the first page (no 'before' parameter)
+    // This prevents marking old messages as read when paginating
+    if (!before) {
+      try {
+        await this.markMessagesAsRead(conversationId, userId);
+      } catch (error) {
+        // Log error but don't fail the request
+        this.logger.warn(`Failed to auto-mark messages as read: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
 
     return messages.map(msg => ({
       id: msg._id,

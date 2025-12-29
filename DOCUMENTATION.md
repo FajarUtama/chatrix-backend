@@ -388,7 +388,7 @@ Let me check the user module to document the user-related endpoints.
 
 **Endpoint:** `POST /chat/conversations/ensure`
 
-**Description:** Ensure a direct conversation exists with a user. If it exists, returns it. If not, creates a new one.
+**Description:** Ensure a direct conversation exists with a user. If it exists, returns it. If not, creates a new one. **Note:** Messages are automatically marked as read when this endpoint is called (when opening an existing conversation).
 
 **Headers:**
 - `Authorization`: Bearer token
@@ -490,7 +490,7 @@ Let me check the user module to document the user-related endpoints.
 
 **Endpoint:** `GET /chat/conversations/:id/messages`
 
-**Description:** Get messages in a specific conversation.
+**Description:** Get messages in a specific conversation. **Note:** Messages are automatically marked as read when this endpoint is called (only on the first page, not when paginating with `before` parameter).
 
 **Headers:**
 - `Authorization`: Bearer token
