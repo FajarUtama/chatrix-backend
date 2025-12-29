@@ -6,6 +6,8 @@ import { ConfigService } from '../../config/config.service';
 export class MqttService implements OnModuleInit {
   private readonly logger = new Logger(MqttService.name);
   private client!: mqtt.MqttClient;
+  private topicHandlers: Map<string, (payload: any) => void> = new Map();
+  private messageHandlerRegistered = false;
 
   constructor(private configService: ConfigService) { }
 
@@ -21,6 +23,8 @@ export class MqttService implements OnModuleInit {
 
       this.client.on('connect', () => {
         this.logger.log('MQTT client connected');
+        // Resubscribe to all topics after reconnection
+        this.resubscribeAll();
       });
 
       this.client.on('error', (error: Error) => {
@@ -34,8 +38,53 @@ export class MqttService implements OnModuleInit {
       this.client.on('reconnect', () => {
         this.logger.log('MQTT client reconnecting');
       });
+
+      // Register a single message handler for all topics
+      this.registerMessageHandler();
     } catch (error) {
       this.logger.error('Failed to initialize MQTT client:', error as any);
+    }
+  }
+
+  private registerMessageHandler(): void {
+    if (this.messageHandlerRegistered) {
+      return;
+    }
+
+    this.client.on('message', (receivedTopic: string, message: Buffer) => {
+      const handler = this.topicHandlers.get(receivedTopic);
+      if (handler) {
+        try {
+          const payload = JSON.parse(message.toString());
+          handler(payload);
+        } catch (error) {
+          // If not JSON, pass as string
+          handler(message.toString());
+        }
+      }
+    });
+
+    this.messageHandlerRegistered = true;
+    this.logger.debug('MQTT message handler registered');
+  }
+
+  private resubscribeAll(): void {
+    if (!this.client || !this.client.connected) {
+      return;
+    }
+
+    const topics = Array.from(this.topicHandlers.keys());
+    if (topics.length > 0) {
+      this.logger.log(`Resubscribing to ${topics.length} topics after reconnection`);
+      topics.forEach(topic => {
+        this.client.subscribe(topic, (error: Error | null) => {
+          if (error) {
+            this.logger.error(`Failed to resubscribe to ${topic}:`, error);
+          } else {
+            this.logger.debug(`Resubscribed to ${topic}`);
+          }
+        });
+      });
     }
   }
 
@@ -47,11 +96,11 @@ export class MqttService implements OnModuleInit {
 
     try {
       const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
-      this.client.publish(topic, message, (error: Error | undefined) => {
+      this.client.publish(topic, message, { qos: 1 }, (error: Error | undefined) => {
         if (error) {
           this.logger.error(`Failed to publish to ${topic}:`, error);
         } else {
-          this.logger.debug(`Published to ${topic}`);
+          this.logger.debug(`Published to ${topic}: ${message.substring(0, 100)}...`);
         }
       });
     } catch (error: any) {
@@ -65,23 +114,30 @@ export class MqttService implements OnModuleInit {
       return;
     }
 
-    this.client.subscribe(topic, (error: Error | null) => {
+    // Store the handler
+    this.topicHandlers.set(topic, handler);
+
+    this.client.subscribe(topic, { qos: 1 }, (error: Error | null) => {
       if (error) {
         this.logger.error(`Failed to subscribe to ${topic}:`, error);
       } else {
         this.logger.log(`Subscribed to ${topic}`);
       }
     });
+  }
 
-    this.client.on('message', (receivedTopic: string, message: Buffer) => {
-      if (receivedTopic === topic) {
-        try {
-          const payload = JSON.parse(message.toString());
-          handler(payload);
-        } catch (error) {
-          // If not JSON, pass as string
-          handler(message.toString());
-        }
+  unsubscribe(topic: string): void {
+    if (!this.client || !this.client.connected) {
+      this.logger.warn('MQTT client not connected, skipping unsubscribe');
+      return;
+    }
+
+    this.topicHandlers.delete(topic);
+    this.client.unsubscribe(topic, (error: Error | undefined) => {
+      if (error) {
+        this.logger.error(`Failed to unsubscribe from ${topic}:`, error);
+      } else {
+        this.logger.log(`Unsubscribed from ${topic}`);
       }
     });
   }

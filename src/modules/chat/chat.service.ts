@@ -338,9 +338,12 @@ export class ChatService {
       throw new Error('Conversation not found or access denied');
     }
 
+    // Find the other participant (sender of the messages)
+    const senderId = conversation.participant_ids.find(id => id !== userId);
+
     // Update all unread messages from other participants
     const now = new Date();
-    await this.messageModel.updateMany(
+    const result = await this.messageModel.updateMany(
       {
         conversation_id: conversationId,
         sender_id: { $ne: userId }, // Not sent by current user
@@ -355,7 +358,18 @@ export class ChatService {
       }
     ).exec();
 
-    this.logger.log(`Marked messages as read: conversationId=${conversationId}, userId=${userId}`);
+    this.logger.log(`Marked messages as read: conversationId=${conversationId}, userId=${userId}, updated=${result.modifiedCount}`);
+
+    // Publish read receipt to MQTT if any messages were updated
+    if (result.modifiedCount > 0 && senderId) {
+      this.mqttService.publish(`chat/${senderId}/read-receipts`, {
+        conversation_id: conversationId,
+        read_by: userId,
+        read_at: now,
+        count: result.modifiedCount
+      });
+      this.logger.debug(`Published read receipt to chat/${senderId}/read-receipts`);
+    }
   }
 }
 
