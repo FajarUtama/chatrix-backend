@@ -19,6 +19,8 @@ export class MqttService implements OnModuleInit {
       this.client = mqtt.connect(url, {
         reconnectPeriod: 5000,
         connectTimeout: 30000,
+        // Optimize for immediate publish - no buffering
+        queueQoSZero: false, // Don't queue QoS 0 messages
       });
 
       this.client.on('connect', () => {
@@ -92,6 +94,7 @@ export class MqttService implements OnModuleInit {
    * Publish message to MQTT topic immediately (no queue, no delay)
    * This is a fire-and-forget operation - message is sent immediately without blocking
    * QoS 1 ensures guaranteed delivery to subscribers
+   * Optimized for real-time delivery with no buffering
    */
   publish(topic: string, payload: any): void {
     if (!this.client || !this.client.connected) {
@@ -101,15 +104,26 @@ export class MqttService implements OnModuleInit {
 
     try {
       const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
-      // Immediate publish - no await, no queue, no delay
-      // Callback is only for error handling/logging, does not block execution
-      this.client.publish(topic, message, { qos: 1 }, (error: Error | undefined) => {
-        if (error) {
-          this.logger.error(`Failed to publish to ${topic}:`, error);
-        } else {
-          this.logger.debug(`Published to ${topic}: ${message.substring(0, 100)}...`);
+      
+      // Immediate publish - no delay, no queue, no buffering
+      // Publish directly without setImmediate to minimize latency
+      // retain: false ensures message is not stored by broker (immediate delivery only)
+      this.client.publish(
+        topic, 
+        message, 
+        { 
+          qos: 1, 
+          retain: false, // Don't retain message - immediate delivery only, no persistence
+          dup: false 
+        }, 
+        (error: Error | undefined) => {
+          if (error) {
+            this.logger.error(`Failed to publish to ${topic}:`, error);
+          } else {
+            this.logger.debug(`Published to ${topic}: ${message.substring(0, 100)}...`);
+          }
         }
-      });
+      );
     } catch (error: any) {
       this.logger.error(`Error publishing to ${topic}:`, error);
     }

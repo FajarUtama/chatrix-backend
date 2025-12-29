@@ -182,28 +182,50 @@ export class ChatService {
       const message = await this.messageModel.create(messageData);
       this.logger.debug(`Message created with ID: ${message._id}`);
 
-      // Update conversation
+      // Immediately publish new message to MQTT BEFORE updating conversation
+      // This ensures message arrives in real-time even if conversation update is delayed
+      if (conversation && recipientId) {
+        // Prepare complete message payload for MQTT
+        const messagePayload = {
+          conversation_id: conversationId,
+          message: {
+            id: message._id.toString(),
+            conversation_id: conversationId,
+            sender_id: senderId,
+            type: payload.type,
+            text: messageText,
+            media: payload.media,
+            status: message.status,
+            sent_at: message.sent_at ? message.sent_at.toISOString() : new Date().toISOString(),
+            delivered_at: message.delivered_at ? message.delivered_at.toISOString() : null,
+            read_at: message.read_at ? message.read_at.toISOString() : null,
+            read_by: message.read_by || [],
+            created_at: message.created_at ? message.created_at.toISOString() : new Date().toISOString(),
+            updated_at: message.updated_at ? message.updated_at.toISOString() : null,
+          },
+        };
+
+        // Publish immediately - fire and forget, no blocking, no delay
+        this.mqttService.publish(`chat/${recipientId}/messages`, messagePayload);
+        this.logger.log(`Immediately published new message to chat/${recipientId}/messages for real-time delivery`);
+      }
+
+      // Update conversation (this can happen in parallel, doesn't block MQTT publish)
       this.logger.debug('Updating conversation...');
       await this.conversationModel.findByIdAndUpdate(conversationId, {
         last_message_at: new Date(),
         last_message_preview: messageText || '[Media]',
       }).exec();
 
-      // Publish to MQTT
-      this.logger.debug('Publishing to MQTT...');
+      // Also publish conversation update to recipient for real-time conversation list update
       if (conversation && recipientId) {
-        this.mqttService.publish(`chat/${recipientId}/messages`, {
+        this.mqttService.publish(`chat/${recipientId}/conversations`, {
           conversation_id: conversationId,
-          message: {
-            id: message._id,
-            sender_id: senderId,
-            type: payload.type,
-            text: messageText,
-            media: payload.media,
-            status: message.status,
-            created_at: message.created_at,
-          },
+          last_message_at: new Date().toISOString(),
+          last_message_preview: messageText || '[Media]',
+          action: 'updated',
         });
+        this.logger.debug(`Immediately published conversation update to chat/${recipientId}/conversations`);
       }
 
       this.logger.log(`Message created successfully: ${message._id}`);
@@ -382,15 +404,19 @@ export class ChatService {
     this.logger.log(`Marked messages as read: conversationId=${conversationId}, userId=${userId}, updated=${result.modifiedCount}`);
 
     // Immediately publish read receipt to MQTT if any messages were updated
-    // This is a fire-and-forget operation with no delay or queue - message is sent immediately
-    // Frontend will receive real-time read receipt notification via MQTT
+    // Publish is called synchronously right after database update - no await, no delay
+    // This ensures real-time delivery to frontend via MQTT
     if (result.modifiedCount > 0 && senderId) {
-      this.mqttService.publish(`chat/${senderId}/read-receipts`, {
+      // Prepare payload before publish to minimize latency
+      const readReceiptPayload = {
         conversation_id: conversationId,
         read_by: userId,
         read_at: now.toISOString(), // Ensure ISO string format
         count: result.modifiedCount
-      });
+      };
+      
+      // Publish immediately - fire and forget, no blocking
+      this.mqttService.publish(`chat/${senderId}/read-receipts`, readReceiptPayload);
       this.logger.debug(`Immediately published read receipt to chat/${senderId}/read-receipts`);
     }
   }
