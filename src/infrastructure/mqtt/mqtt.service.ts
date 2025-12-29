@@ -88,6 +88,11 @@ export class MqttService implements OnModuleInit {
     }
   }
 
+  /**
+   * Publish message to MQTT topic immediately (no queue, no delay)
+   * This is a fire-and-forget operation - message is sent immediately without blocking
+   * QoS 1 ensures guaranteed delivery to subscribers
+   */
   publish(topic: string, payload: any): void {
     if (!this.client || !this.client.connected) {
       this.logger.warn('MQTT client not connected, skipping publish');
@@ -96,6 +101,8 @@ export class MqttService implements OnModuleInit {
 
     try {
       const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      // Immediate publish - no await, no queue, no delay
+      // Callback is only for error handling/logging, does not block execution
       this.client.publish(topic, message, { qos: 1 }, (error: Error | undefined) => {
         if (error) {
           this.logger.error(`Failed to publish to ${topic}:`, error);
