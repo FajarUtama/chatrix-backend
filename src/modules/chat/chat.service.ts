@@ -182,50 +182,28 @@ export class ChatService {
       const message = await this.messageModel.create(messageData);
       this.logger.debug(`Message created with ID: ${message._id}`);
 
-      // Immediately publish new message to MQTT BEFORE updating conversation
-      // This ensures message arrives in real-time even if conversation update is delayed
-      if (conversation && recipientId) {
-        // Prepare complete message payload for MQTT
-        const messagePayload = {
-          conversation_id: conversationId,
-          message: {
-            id: message._id.toString(),
-            conversation_id: conversationId,
-            sender_id: senderId,
-            type: payload.type,
-            text: messageText,
-            media: payload.media,
-            status: message.status,
-            sent_at: message.sent_at ? message.sent_at.toISOString() : new Date().toISOString(),
-            delivered_at: message.delivered_at ? message.delivered_at.toISOString() : null,
-            read_at: message.read_at ? message.read_at.toISOString() : null,
-            read_by: message.read_by || [],
-            created_at: message.created_at ? message.created_at.toISOString() : new Date().toISOString(),
-            updated_at: message.updated_at ? message.updated_at.toISOString() : null,
-          },
-        };
-
-        // Publish immediately - fire and forget, no blocking, no delay
-        this.mqttService.publish(`chat/${recipientId}/messages`, messagePayload);
-        this.logger.log(`Immediately published new message to chat/${recipientId}/messages for real-time delivery`);
-      }
-
-      // Update conversation (this can happen in parallel, doesn't block MQTT publish)
+      // Update conversation
       this.logger.debug('Updating conversation...');
       await this.conversationModel.findByIdAndUpdate(conversationId, {
         last_message_at: new Date(),
         last_message_preview: messageText || '[Media]',
       }).exec();
 
-      // Also publish conversation update to recipient for real-time conversation list update
+      // Publish to MQTT - keep it simple like before
+      this.logger.debug('Publishing to MQTT...');
       if (conversation && recipientId) {
-        this.mqttService.publish(`chat/${recipientId}/conversations`, {
+        this.mqttService.publish(`chat/${recipientId}/messages`, {
           conversation_id: conversationId,
-          last_message_at: new Date().toISOString(),
-          last_message_preview: messageText || '[Media]',
-          action: 'updated',
+          message: {
+            id: message._id,
+            sender_id: senderId,
+            type: payload.type,
+            text: messageText,
+            media: payload.media,
+            status: message.status,
+            created_at: message.created_at,
+          },
         });
-        this.logger.debug(`Immediately published conversation update to chat/${recipientId}/conversations`);
       }
 
       this.logger.log(`Message created successfully: ${message._id}`);
