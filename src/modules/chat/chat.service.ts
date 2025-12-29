@@ -403,21 +403,47 @@ export class ChatService {
 
     this.logger.log(`Marked messages as read: conversationId=${conversationId}, userId=${userId}, updated=${result.modifiedCount}`);
 
-    // Immediately publish read receipt to MQTT if any messages were updated
-    // Publish is called synchronously right after database update - no await, no delay
-    // This ensures real-time delivery to frontend via MQTT
-    if (result.modifiedCount > 0 && senderId) {
-      // Prepare payload before publish to minimize latency
-      const readReceiptPayload = {
+    // Immediately publish read receipt updates to MQTT if any messages were updated
+    // This ensures real-time updates in both detail chat and conversation list
+    if (result.modifiedCount > 0) {
+      // 1. Publish read receipt to sender (for real-time status update in their chat detail)
+      // This allows sender to see their messages marked as "read" in real-time
+      if (senderId) {
+        const readReceiptPayload = {
+          conversation_id: conversationId,
+          read_by: userId,
+          read_at: now.toISOString(), // Ensure ISO string format
+          count: result.modifiedCount
+        };
+        
+        // Publish immediately - fire and forget, no blocking
+        this.mqttService.publish(`chat/${senderId}/read-receipts`, readReceiptPayload);
+        this.logger.log(`Immediately published read receipt to chat/${senderId}/read-receipts for real-time status update in detail chat`);
+      }
+
+      // 2. Publish message status update to current user (for real-time update in their detail chat)
+      // This updates the message status from 'sent'/'delivered' to 'read' in real-time for the reader
+      this.mqttService.publish(`chat/${userId}/messages-status`, {
         conversation_id: conversationId,
+        action: 'marked_as_read',
         read_by: userId,
-        read_at: now.toISOString(), // Ensure ISO string format
+        read_at: now.toISOString(),
         count: result.modifiedCount
-      };
-      
-      // Publish immediately - fire and forget, no blocking
-      this.mqttService.publish(`chat/${senderId}/read-receipts`, readReceiptPayload);
-      this.logger.debug(`Immediately published read receipt to chat/${senderId}/read-receipts`);
+      });
+      this.logger.debug(`Immediately published message status update to chat/${userId}/messages-status for real-time update in detail chat`);
+
+      // 3. Publish conversation update to both participants (for real-time update in conversation list)
+      // This updates unread count and last message status in conversation list for both users
+      conversation.participant_ids.forEach(participantId => {
+        this.mqttService.publish(`chat/${participantId}/conversations`, {
+          conversation_id: conversationId,
+          action: 'messages_read',
+          read_by: userId,
+          read_at: now.toISOString(),
+          unread_count: 0, // All messages are now read - update badge count
+        });
+        this.logger.debug(`Immediately published conversation update to chat/${participantId}/conversations for real-time update in list chat`);
+      });
     }
   }
 }
