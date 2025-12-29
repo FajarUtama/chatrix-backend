@@ -381,7 +381,9 @@ export class ChatService {
 
     this.logger.log(`Marked messages as read: conversationId=${conversationId}, userId=${userId}, updated=${result.modifiedCount}`);
 
-    // Publish read receipt to MQTT if any messages were updated
+    // Immediately publish read receipt to MQTT if any messages were updated
+    // This is a fire-and-forget operation with no delay or queue - message is sent immediately
+    // Frontend will receive real-time read receipt notification via MQTT
     if (result.modifiedCount > 0 && senderId) {
       this.mqttService.publish(`chat/${senderId}/read-receipts`, {
         conversation_id: conversationId,
@@ -389,7 +391,7 @@ export class ChatService {
         read_at: now.toISOString(), // Ensure ISO string format
         count: result.modifiedCount
       });
-      this.logger.debug(`Published read receipt to chat/${senderId}/read-receipts`);
+      this.logger.debug(`Immediately published read receipt to chat/${senderId}/read-receipts`);
     }
   }
 }
