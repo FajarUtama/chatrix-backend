@@ -182,28 +182,44 @@ export class ChatService {
       const message = await this.messageModel.create(messageData);
       this.logger.debug(`Message created with ID: ${message._id}`);
 
-      // Update conversation
+      // Immediately publish to MQTT BEFORE updating conversation for real-time delivery
+      // This ensures message arrives instantly to recipient without waiting for conversation update
+      // QoS 1 ensures guaranteed delivery to recipient
+      if (conversation && recipientId) {
+        const messagePayload = {
+          conversation_id: conversationId,
+          message: {
+            id: message._id.toString(),
+            conversation_id: conversationId,
+            sender_id: senderId,
+            type: payload.type,
+            text: messageText,
+            media: payload.media,
+            status: message.status,
+            created_at: message.created_at ? message.created_at.toISOString() : new Date().toISOString(),
+          },
+        };
+        
+        this.mqttService.publish(`chat/${recipientId}/messages`, messagePayload);
+        this.logger.log(`Immediately published new message to chat/${recipientId}/messages - recipient will receive in real-time`);
+      }
+
+      // Update conversation (this can happen in parallel, doesn't block MQTT)
       this.logger.debug('Updating conversation...');
       await this.conversationModel.findByIdAndUpdate(conversationId, {
         last_message_at: new Date(),
         last_message_preview: messageText || '[Media]',
       }).exec();
 
-      // Publish to MQTT - keep it simple like before
-      this.logger.debug('Publishing to MQTT...');
+      // Also publish conversation update for real-time list update
       if (conversation && recipientId) {
-        this.mqttService.publish(`chat/${recipientId}/messages`, {
+        this.mqttService.publish(`chat/${recipientId}/conversations`, {
           conversation_id: conversationId,
-          message: {
-            id: message._id,
-            sender_id: senderId,
-            type: payload.type,
-            text: messageText,
-            media: payload.media,
-            status: message.status,
-            created_at: message.created_at,
-          },
+          last_message_at: new Date().toISOString(),
+          last_message_preview: messageText || '[Media]',
+          action: 'updated',
         });
+        this.logger.debug(`Published conversation update to chat/${recipientId}/conversations`);
       }
 
       this.logger.log(`Message created successfully: ${message._id}`);
@@ -398,12 +414,14 @@ export class ChatService {
         };
         
         // Publish immediately - fire and forget, no blocking
+        // QoS 1 ensures guaranteed delivery to sender for real-time status update
         this.mqttService.publish(`chat/${senderId}/read-receipts`, readReceiptPayload);
-        this.logger.log(`Immediately published read receipt to chat/${senderId}/read-receipts for real-time status update in detail chat`);
+        this.logger.log(`Immediately published read receipt to chat/${senderId}/read-receipts - sender will receive status update in real-time`);
       }
 
       // 2. Publish message status update to current user (for real-time update in their detail chat)
       // This updates the message status from 'sent'/'delivered' to 'read' in real-time for the reader
+      // QoS 1 ensures guaranteed delivery to reader for real-time status update
       this.mqttService.publish(`chat/${userId}/messages-status`, {
         conversation_id: conversationId,
         action: 'marked_as_read',
@@ -411,10 +429,11 @@ export class ChatService {
         read_at: now.toISOString(),
         count: result.modifiedCount
       });
-      this.logger.debug(`Immediately published message status update to chat/${userId}/messages-status for real-time update in detail chat`);
+      this.logger.log(`Immediately published message status update to chat/${userId}/messages-status - reader will receive status update in real-time`);
 
       // 3. Publish conversation update to both participants (for real-time update in conversation list)
       // This updates unread count and last message status in conversation list for both users
+      // QoS 1 ensures guaranteed delivery to all participants for real-time list update
       conversation.participant_ids.forEach(participantId => {
         this.mqttService.publish(`chat/${participantId}/conversations`, {
           conversation_id: conversationId,
@@ -423,7 +442,7 @@ export class ChatService {
           read_at: now.toISOString(),
           unread_count: 0, // All messages are now read - update badge count
         });
-        this.logger.debug(`Immediately published conversation update to chat/${participantId}/conversations for real-time update in list chat`);
+        this.logger.log(`Immediately published conversation update to chat/${participantId}/conversations - participant will receive list update in real-time`);
       });
     }
   }

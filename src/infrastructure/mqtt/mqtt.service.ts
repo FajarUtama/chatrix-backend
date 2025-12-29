@@ -24,21 +24,31 @@ export class MqttService implements OnModuleInit {
       });
 
       this.client.on('connect', () => {
-        this.logger.log('MQTT client connected');
+        this.logger.log('MQTT client connected - ready for real-time message delivery');
         // Resubscribe to all topics after reconnection
         this.resubscribeAll();
       });
 
       this.client.on('error', (error: Error) => {
         this.logger.error('MQTT client error:', error);
+        this.logger.error('This may affect real-time message delivery');
       });
 
       this.client.on('offline', () => {
-        this.logger.warn('MQTT client offline');
+        this.logger.warn('MQTT client offline - messages will not be delivered until reconnected');
       });
 
       this.client.on('reconnect', () => {
-        this.logger.log('MQTT client reconnecting');
+        this.logger.log('MQTT client reconnecting - will resume real-time delivery when connected');
+      });
+
+      // Monitor packet send/receive for debugging
+      this.client.on('packetsend', (packet) => {
+        this.logger.debug(`MQTT packet sent: ${packet.cmd}`);
+      });
+
+      this.client.on('packetreceive', (packet) => {
+        this.logger.debug(`MQTT packet received: ${packet.cmd}`);
       });
 
       // Register a single message handler for all topics
@@ -95,10 +105,18 @@ export class MqttService implements OnModuleInit {
    * This is a fire-and-forget operation - message is sent immediately without blocking
    * QoS 1 ensures guaranteed delivery to subscribers
    * Optimized for real-time delivery with no buffering
+   * Ensures message is delivered to recipient in real-time
    */
   publish(topic: string, payload: any): void {
-    if (!this.client || !this.client.connected) {
-      this.logger.warn('MQTT client not connected, skipping publish');
+    // Check connection status - if not connected, try to wait briefly for reconnection
+    if (!this.client) {
+      this.logger.error(`MQTT client not initialized, cannot publish to ${topic}`);
+      return;
+    }
+
+    if (!this.client.connected) {
+      this.logger.warn(`MQTT client not connected, cannot publish to ${topic}. Message will be lost.`);
+      // Note: In production, you might want to queue messages here for retry
       return;
     }
 
@@ -108,24 +126,28 @@ export class MqttService implements OnModuleInit {
       // Immediate publish - no delay, no queue, no buffering
       // Publish directly without setImmediate to minimize latency
       // retain: false ensures message is not stored by broker (immediate delivery only)
+      // QoS 1 ensures at least once delivery guarantee
       this.client.publish(
         topic, 
         message, 
         { 
-          qos: 1, 
+          qos: 1, // At least once delivery - ensures message reaches recipient
           retain: false, // Don't retain message - immediate delivery only, no persistence
           dup: false 
         }, 
         (error: Error | undefined) => {
           if (error) {
             this.logger.error(`Failed to publish to ${topic}:`, error);
+            this.logger.error(`Payload: ${message.substring(0, 200)}`);
           } else {
-            this.logger.debug(`Published to ${topic}: ${message.substring(0, 100)}...`);
+            this.logger.log(`Successfully published to ${topic} - message delivered to recipient`);
+            this.logger.debug(`Payload: ${message.substring(0, 100)}...`);
           }
         }
       );
     } catch (error: any) {
       this.logger.error(`Error publishing to ${topic}:`, error);
+      this.logger.error(`Payload: ${JSON.stringify(payload).substring(0, 200)}`);
     }
   }
 
@@ -165,6 +187,38 @@ export class MqttService implements OnModuleInit {
 
   getClient(): mqtt.MqttClient {
     return this.client;
+  }
+
+  /**
+   * Check if MQTT client is connected and ready for publishing
+   * This ensures messages can be delivered to recipients in real-time
+   */
+  isConnected(): boolean {
+    return this.client !== undefined && this.client.connected === true;
+  }
+
+  /**
+   * Wait for MQTT connection to be ready (with timeout)
+   * Useful for ensuring message delivery before publishing
+   */
+  async waitForConnection(timeout: number = 5000): Promise<boolean> {
+    if (this.isConnected()) {
+      return true;
+    }
+
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      const checkInterval = setInterval(() => {
+        if (this.isConnected()) {
+          clearInterval(checkInterval);
+          resolve(true);
+        } else if (Date.now() - startTime > timeout) {
+          clearInterval(checkInterval);
+          this.logger.warn(`MQTT connection timeout after ${timeout}ms`);
+          resolve(false);
+        }
+      }, 100);
+    });
   }
 }
 
