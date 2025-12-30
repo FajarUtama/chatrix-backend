@@ -164,7 +164,50 @@ export class UserController {
     }));
   }
 
-  @Get(':phone')
+  @Get(':userId')
+  @ApiOperation({ summary: 'Get user by ID' })
+  @ApiParam({ name: 'userId', description: 'User ID (MongoDB ObjectId)' })
+  @ApiResponse({
+    status: 200,
+    description: 'User found',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '60d5ec9f5824f70015a1c002' },
+        username: { type: 'string', example: 'janedoe' },
+        full_name: { type: 'string', example: 'Jane Doe' },
+        avatar_url: { type: 'string', example: 'https://example.com/jane-avatar.jpg' },
+        bio: { type: 'string', example: 'Photography enthusiast' },
+        phone: { type: 'string', example: '+1234567891' },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getUserById(@Param('userId') userId: string) {
+    // Check if userId is a valid MongoDB ObjectId (24 hex characters)
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(userId);
+    
+    if (!isValidObjectId) {
+      throw new NotFoundException('Invalid user ID format');
+    }
+
+    const user = await this.userService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      id: user._id,
+      username: user.username,
+      full_name: user.full_name,
+      avatar_url: this.urlNormalizer.normalizeUrl(user.avatar_url),
+      bio: user.bio,
+      phone: user.phone,
+    };
+  }
+
+  @Get('phone/:phone')
   @ApiOperation({ summary: 'Get user by phone number' })
   @ApiParam({ name: 'phone', description: 'Phone number' })
   @ApiResponse({

@@ -194,17 +194,17 @@ Let me check the user module to document the user-related endpoints.
 
 ---
 
-### 3. Get User by ID or Username
+### 3. Get User by ID
 
-**Endpoint:** `GET /users/:identifier`
+**Endpoint:** `GET /users/:userId`
 
-**Description:** Get public profile information for a specific user by ID or username.
+**Description:** Get user profile information by user ID (MongoDB ObjectId). Returns public profile data including name, username, avatar, bio, and phone.
 
 **Headers:**
-- `Authorization`: Bearer token (optional, required for private accounts)
+- `Authorization`: Bearer token
 
 **Path Parameters:**
-- `identifier`: User's ID or username
+- `userId`: User's ID (MongoDB ObjectId - 24 hex characters)
 
 **Response (Success - 200 OK):**
 ```json
@@ -214,19 +214,43 @@ Let me check the user module to document the user-related endpoints.
   "full_name": "Jane Doe",
   "avatar_url": "https://example.com/jane-avatar.jpg",
   "bio": "Photography enthusiast",
-  "website": "https://janedoe.photography",
-  "is_private": false,
-  "follower_count": 500,
-  "following_count": 320,
-  "post_count": 128,
-  "is_following": true,
-  "created_at": "2022-06-15T10:30:00.000Z"
+  "phone": "+1234567891"
 }
 ```
 
 **Error Responses:**
+- 401 Unauthorized: Not authenticated
+- 404 Not Found: User not found or invalid user ID format
+
+---
+
+### 4. Get User by Phone Number
+
+**Endpoint:** `GET /users/phone/:phone`
+
+**Description:** Get user profile information by phone number.
+
+**Headers:**
+- `Authorization`: Bearer token
+
+**Path Parameters:**
+- `phone`: User's phone number
+
+**Response (Success - 200 OK):**
+```json
+{
+  "id": "60d5ec9f5824f70015a1c002",
+  "phone": "+1234567891",
+  "username": "janedoe",
+  "full_name": "Jane Doe",
+  "avatar_url": "https://example.com/jane-avatar.jpg",
+  "bio": "Photography enthusiast"
+}
+```
+
+**Error Responses:**
+- 401 Unauthorized: Not authenticated
 - 404 Not Found: User not found
-- 403 Forbidden: Cannot view private profile (when not following)
 
 ---
 
