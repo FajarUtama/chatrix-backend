@@ -213,13 +213,36 @@ export class ChatService {
 
       // Also publish conversation update for real-time list update
       if (conversation && recipientId) {
+        // Count unread messages for recipient (messages not sent by recipient and not read by recipient)
+        const unreadCount = await this.messageModel.countDocuments({
+          conversation_id: conversationId,
+          sender_id: { $ne: recipientId },
+          status: { $in: ['sent', 'delivered'] },
+          read_by: { $nin: [recipientId] }
+        }).exec();
+
         this.mqttService.publish(`chat/${recipientId}/conversations`, {
           conversation_id: conversationId,
           last_message_at: new Date().toISOString(),
           last_message_preview: messageText || '[Media]',
+          last_message_sender_id: senderId,
+          unread_count: unreadCount, // Accurate unread count
           action: 'updated',
         });
         this.logger.debug(`Published conversation update to chat/${recipientId}/conversations`);
+      }
+
+      // Also publish conversation update for sender (to update last_message_status)
+      if (conversation && recipientId) {
+        this.mqttService.publish(`chat/${senderId}/conversations`, {
+          conversation_id: conversationId,
+          last_message_at: new Date().toISOString(),
+          last_message_preview: messageText || '[Media]',
+          last_message_sender_id: senderId,
+          last_message_status: 'sent', // Initial status when message is sent
+          action: 'updated',
+        });
+        this.logger.debug(`Published conversation update to chat/${senderId}/conversations`);
       }
 
       this.logger.log(`Message created successfully: ${message._id}`);
@@ -252,6 +275,25 @@ export class ChatService {
         let isContact = false;
         let iBlockedThem = false;
         let theyBlockedMe = false;
+
+        // Get last message for this conversation
+        const lastMessage = await this.messageModel
+          .findOne({ conversation_id: conv._id.toString() })
+          .sort({ created_at: -1 })
+          .exec();
+
+        // Get last message sender ID and status
+        const lastMessageSenderId = lastMessage?.sender_id?.toString() || null;
+        const lastMessageStatus = lastMessage?.status || null;
+        const isLastMessageFromMe = lastMessageSenderId === userId;
+
+        // Count unread messages (messages not sent by current user and not read by current user)
+        const unreadCount = await this.messageModel.countDocuments({
+          conversation_id: conv._id.toString(),
+          sender_id: { $ne: userId },
+          status: { $in: ['sent', 'delivered'] },
+          read_by: { $nin: [userId] } // userId not in read_by array
+        }).exec();
 
         if (contactId) {
           const user = await this.userService.findById(contactId);
@@ -291,6 +333,14 @@ export class ChatService {
           },
           last_message_at: conv.last_message_at,
           last_message_preview: conv.last_message_preview,
+          last_message_sender_id: lastMessageSenderId,
+          // If last message is from current user, show status (sent, delivered, read)
+          // If last message is from contact, show unread count
+          ...(isLastMessageFromMe ? {
+            last_message_status: lastMessageStatus, // sent, delivered, or read
+          } : {
+            unread_count: unreadCount, // Number of unread messages
+          }),
           relationship: {
             is_contact: isContact,
             i_blocked_them: iBlockedThem,
@@ -434,14 +484,36 @@ export class ChatService {
       // 3. Publish conversation update to both participants (for real-time update in conversation list)
       // This updates unread count and last message status in conversation list for both users
       // QoS 1 ensures guaranteed delivery to all participants for real-time list update
+      
+      // Get last message to determine sender and status
+      const lastMessage = await this.messageModel
+        .findOne({ conversation_id: conversationId })
+        .sort({ created_at: -1 })
+        .exec();
+      
+      const lastMessageSenderId = lastMessage?.sender_id?.toString() || null;
+      const lastMessageStatus = lastMessage?.status || null;
+
       conversation.participant_ids.forEach(participantId => {
-        this.mqttService.publish(`chat/${participantId}/conversations`, {
+        const isLastMessageFromMe = lastMessageSenderId === participantId;
+        
+        const updatePayload: any = {
           conversation_id: conversationId,
           action: 'messages_read',
           read_by: userId,
           read_at: now.toISOString(),
-          unread_count: 0, // All messages are now read - update badge count
-        });
+          last_message_sender_id: lastMessageSenderId,
+        };
+
+        // If last message is from current participant, show status
+        // If last message is from other participant, show unread_count (0 after read)
+        if (isLastMessageFromMe) {
+          updatePayload.last_message_status = lastMessageStatus; // sent, delivered, or read
+        } else {
+          updatePayload.unread_count = 0; // All messages are now read - update badge count
+        }
+
+        this.mqttService.publish(`chat/${participantId}/conversations`, updatePayload);
         this.logger.log(`Immediately published conversation update to chat/${participantId}/conversations - participant will receive list update in real-time`);
       });
     }

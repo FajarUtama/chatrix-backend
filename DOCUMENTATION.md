@@ -475,35 +475,60 @@ Let me check the user module to document the user-related endpoints.
   "conversations": [
     {
       "id": "80d5ec9f5824f70015a1c004",
-      "participants": [
-        {
-          "id": "60d5ec9f5824f70015a1c001",
-          "username": "johndoe",
-          "full_name": "John Doe",
-          "avatar_url": "https://example.com/avatar.jpg"
-        },
-        {
-          "id": "60d5ec9f5824f70015a1c002",
-          "username": "janedoe",
-          "full_name": "Jane Doe",
-          "avatar_url": "https://example.com/jane-avatar.jpg"
-        }
-      ],
-      "last_message": {
-        "id": "90d5ec9f5824f70015a1c005",
-        "sender_id": "60d5ec9f5824f70015a1c002",
-        "content": "Hey, how are you?",
-        "type": "text",
-        "created_at": "2023-04-10T18:30:00.000Z"
+      "type": "direct",
+      "participant_ids": ["60d5ec9f5824f70015a1c001", "60d5ec9f5824f70015a1c002"],
+      "contact": {
+        "id": "60d5ec9f5824f70015a1c002",
+        "name": "Jane Doe",
+        "contact_name": null,
+        "full_name": "Jane Doe",
+        "username": "janedoe",
+        "avatar_url": "https://example.com/jane-avatar.jpg"
       },
+      "last_message_at": "2023-04-10T18:30:00.000Z",
+      "last_message_preview": "Hey, how are you?",
+      "last_message_sender_id": "60d5ec9f5824f70015a1c002",
       "unread_count": 2,
-      "updated_at": "2023-04-10T18:30:00.000Z"
+      "relationship": {
+        "is_contact": true,
+        "i_blocked_them": false,
+        "they_blocked_me": false,
+        "can_message": true
+      }
+    },
+    {
+      "id": "80d5ec9f5824f70015a1c005",
+      "type": "direct",
+      "participant_ids": ["60d5ec9f5824f70015a1c001", "60d5ec9f5824f70015a1c003"],
+      "contact": {
+        "id": "60d5ec9f5824f70015a1c003",
+        "name": "Bob Smith",
+        "contact_name": "Bob",
+        "full_name": "Bob Smith",
+        "username": "bobsmith",
+        "avatar_url": "https://example.com/bob-avatar.jpg"
+      },
+      "last_message_at": "2023-04-10T17:00:00.000Z",
+      "last_message_preview": "Thanks for the help!",
+      "last_message_sender_id": "60d5ec9f5824f70015a1c001",
+      "last_message_status": "read",
+      "relationship": {
+        "is_contact": true,
+        "i_blocked_them": false,
+        "they_blocked_me": false,
+        "can_message": true
+      }
     }
-  ],
-  "next_cursor": "2023-04-09T10:15:00.000Z",
-  "has_more": false
+  ]
 }
 ```
+
+**Response Fields Explanation:**
+- `last_message_sender_id`: ID of the user who sent the last message
+- `last_message_status`: Status of the last message if sent by current user (`sent`, `delivered`, or `read`). Only present when `last_message_sender_id` equals current user ID.
+- `unread_count`: Number of unread messages. Only present when `last_message_sender_id` is NOT the current user (i.e., last message is from the contact).
+- If last message is from current user: shows `last_message_status` (read receipt indicator)
+- If last message is from contact: shows `unread_count` (number of unread messages)
 
 **Error Responses:**
 - 401 Unauthorized: Not authenticated
