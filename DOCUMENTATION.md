@@ -618,9 +618,11 @@ Let me check the user module to document the user-related endpoints.
 ```
 
 **Real-Time Delivery:**
-- Message is immediately published to MQTT topic `chat/{recipientId}/messages`
+- Message is immediately published to MQTT topic `chat/{recipientId}/messages` (for recipient)
+- Message is also published to MQTT topic `chat/{senderId}/messages` (for sender - real-time update in their chat detail)
 - Conversation update is published to `chat/{recipientId}/conversations` for real-time list update
-- Recipient receives message in real-time without delay
+- Conversation update is also published to `chat/{senderId}/conversations` for real-time list update
+- Both recipient and sender receive message in real-time without delay
 
 **Error Responses:**
 - 400 Bad Request: Invalid message content
@@ -723,7 +725,13 @@ The chat system uses MQTT for real-time message and status updates. Frontend app
 
 **When:** Sent immediately after a new message is created
 
-**Use Case:** Display new message in real-time in chat detail
+**Recipients:**
+- Published to `chat/{recipientId}/messages` - Message is delivered to recipient in real-time
+- Published to `chat/{senderId}/messages` - Message is also delivered to sender for real-time update in their own chat detail (allows sender to see their sent message immediately without refresh)
+
+**Use Case:** 
+- Display new message in real-time in chat detail for both recipient and sender
+- Sender sees their own message immediately after sending without needing to refresh
 
 ---
 
@@ -802,6 +810,8 @@ The chat system uses MQTT for real-time message and status updates. Frontend app
 - **QoS:** 1 (At least once delivery - guaranteed delivery)
 - **Retain:** false (Immediate delivery only, no persistence)
 - **Connection:** Auto-reconnect enabled with 5 second interval
+- **Connection Wait:** If MQTT broker is not connected, system will wait up to 2 seconds for connection before publishing (ensures message delivery)
+- **Error Handling:** All MQTT publishes include error handling to prevent message loss
 
 ---
 

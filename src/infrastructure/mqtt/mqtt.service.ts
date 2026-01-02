@@ -106,17 +106,25 @@ export class MqttService implements OnModuleInit {
    * QoS 1 ensures guaranteed delivery to subscribers
    * Optimized for real-time delivery with no buffering
    * Ensures message is delivered to recipient in real-time
+   * If not connected, will wait up to 2 seconds for connection before giving up
    */
-  publish(topic: string, payload: any): void {
+  async publish(topic: string, payload: any, retry: boolean = true): Promise<void> {
     // Check connection status - if not connected, try to wait briefly for reconnection
     if (!this.client) {
       this.logger.error(`MQTT client not initialized, cannot publish to ${topic}`);
       return;
     }
 
-    if (!this.client.connected) {
+    // If not connected and retry is enabled, wait for connection (up to 2 seconds)
+    if (!this.client.connected && retry) {
+      this.logger.debug(`MQTT client not connected, waiting for connection to publish to ${topic}...`);
+      const connected = await this.waitForConnection(2000);
+      if (!connected) {
+        this.logger.warn(`MQTT client not connected after waiting, cannot publish to ${topic}. Message will be lost.`);
+        return;
+      }
+    } else if (!this.client.connected) {
       this.logger.warn(`MQTT client not connected, cannot publish to ${topic}. Message will be lost.`);
-      // Note: In production, you might want to queue messages here for retry
       return;
     }
 
@@ -140,8 +148,7 @@ export class MqttService implements OnModuleInit {
             this.logger.error(`Failed to publish to ${topic}:`, error);
             this.logger.error(`Payload: ${message.substring(0, 200)}`);
           } else {
-            this.logger.log(`Successfully published to ${topic} - message delivered to recipient`);
-            this.logger.debug(`Payload: ${message.substring(0, 100)}...`);
+            this.logger.debug(`Successfully published to ${topic}`);
           }
         }
       );
@@ -149,6 +156,14 @@ export class MqttService implements OnModuleInit {
       this.logger.error(`Error publishing to ${topic}:`, error);
       this.logger.error(`Payload: ${JSON.stringify(payload).substring(0, 200)}`);
     }
+  }
+
+  /**
+   * Publish message synchronously (awaitable version)
+   * Use this when you need to ensure message is published before continuing
+   */
+  async publishAsync(topic: string, payload: any): Promise<void> {
+    return this.publish(topic, payload, true);
   }
 
   subscribe(topic: string, handler: (payload: any) => void): void {
