@@ -14,7 +14,32 @@ export class MqttService implements OnModuleInit {
   async onModuleInit() {
     try {
       const url = this.configService.mqttUrl;
-      this.logger.log(`Connecting to MQTT broker at ${url}`);
+      
+      // ⭐ VERIFICATION 1: Print MQTT_URL final di log startup (full string) - CRITICAL FOR DEBUGGING
+      this.logger.log('═══════════════════════════════════════════════════════════');
+      this.logger.log('🔌 MQTT CONNECTION CONFIGURATION (VERIFY THIS MATCHES FE!)');
+      this.logger.log('═══════════════════════════════════════════════════════════');
+      this.logger.log(`📋 MQTT_URL (FULL STRING): ${url}`);
+      
+      // Parse URL untuk detail breakdown
+      try {
+        const urlObj = new URL(url);
+        this.logger.log(`🌐 Broker Host: ${urlObj.hostname}`);
+        this.logger.log(`🔌 Broker Port: ${urlObj.port || (urlObj.protocol === 'mqtt:' ? '1883 (default)' : urlObj.protocol === 'ws:' ? '80 (default)' : urlObj.protocol === 'wss:' ? '443 (default)' : 'unknown')}`);
+        this.logger.log(`📡 Protocol: ${urlObj.protocol.replace(':', '')}`);
+        this.logger.log(`🔑 Username: ${urlObj.username || 'none (anonymous)'}`);
+        this.logger.log(`🔒 Password: ${urlObj.password ? '***hidden***' : 'none'}`);
+      } catch (parseError) {
+        this.logger.error(`❌ Failed to parse MQTT_URL: ${url}`, parseError);
+        this.logger.error('⚠️ Invalid MQTT_URL format! Expected: mqtt://host:port or ws://host:port');
+      }
+      
+      this.logger.log('═══════════════════════════════════════════════════════════');
+      this.logger.log('💡 IMPORTANT: Frontend MUST connect to the SAME broker URL!');
+      this.logger.log('   If BE is in Docker, FE should use host machine IP, not "mosquitto"');
+      this.logger.log('   Example: BE (Docker) → mqtt://mosquitto:1883');
+      this.logger.log('            FE (Device) → mqtt://YOUR_IP:1883 (or ws://YOUR_IP:9001)');
+      this.logger.log('═══════════════════════════════════════════════════════════');
 
       this.client = mqtt.connect(url, {
         reconnectPeriod: 5000,
@@ -24,7 +49,13 @@ export class MqttService implements OnModuleInit {
       });
 
       this.client.on('connect', () => {
-        this.logger.log('MQTT client connected - ready for real-time message delivery');
+        this.logger.log('═══════════════════════════════════════════════════════════');
+        this.logger.log('✅ MQTT CLIENT CONNECTED SUCCESSFULLY');
+        this.logger.log('═══════════════════════════════════════════════════════════');
+        this.logger.log(`✅ Connection established to: ${url}`);
+        this.logger.log('✅ Ready for real-time message delivery');
+        this.logger.log('✅ All subscriptions will be restored');
+        this.logger.log('═══════════════════════════════════════════════════════════');
         // Resubscribe to all topics after reconnection
         this.resubscribeAll();
       });
@@ -148,7 +179,23 @@ export class MqttService implements OnModuleInit {
             this.logger.error(`Failed to publish to ${topic}:`, error);
             this.logger.error(`Payload: ${message.substring(0, 200)}`);
           } else {
-            this.logger.debug(`Successfully published to ${topic}`);
+            // Log successful publish with payload summary (for checklist verification)
+            try {
+              const payloadObj = typeof payload === 'string' ? JSON.parse(payload) : payload;
+              const summary: any = {
+                type: payloadObj.type,
+                conversation_id: payloadObj.conversation_id,
+              };
+              if (payloadObj.message_id) summary.message_id = payloadObj.message_id;
+              if (payloadObj.sender_id) summary.sender_id = payloadObj.sender_id;
+              if (payloadObj.actor_user_id) summary.actor_user_id = payloadObj.actor_user_id;
+              
+              // ⭐ VERIFICATION 4: Log topic yang dipublish dengan jelas untuk verifikasi
+              this.logger.log(`✅ PUBLISHED | Topic: ${topic} | Payload: ${JSON.stringify(summary)}`);
+              this.logger.debug(`   ⚠️ VERIFY: Frontend should subscribe to exactly: ${topic} (case-sensitive!)`);
+            } catch {
+              this.logger.debug(`Successfully published to ${topic}`);
+            }
           }
         }
       );
@@ -210,6 +257,36 @@ export class MqttService implements OnModuleInit {
    */
   isConnected(): boolean {
     return this.client !== undefined && this.client.connected === true;
+  }
+
+  /**
+   * Get MQTT connection status and configuration details
+   * Useful for health check and debugging
+   */
+  getConnectionInfo(): {
+    connected: boolean;
+    broker_url: string;
+    broker_host?: string;
+    broker_port?: string;
+    protocol?: string;
+    topics_subscribed: string[];
+  } {
+    const info: any = {
+      connected: this.isConnected(),
+      broker_url: this.configService.mqttUrl,
+      topics_subscribed: Array.from(this.topicHandlers.keys()),
+    };
+
+    try {
+      const urlObj = new URL(this.configService.mqttUrl);
+      info.broker_host = urlObj.hostname;
+      info.broker_port = urlObj.port || (urlObj.protocol === 'mqtt:' ? '1883' : urlObj.protocol === 'ws:' ? '80' : urlObj.protocol === 'wss:' ? '443' : 'unknown');
+      info.protocol = urlObj.protocol.replace(':', '');
+    } catch (e) {
+      // URL parse error
+    }
+
+    return info;
   }
 
   /**

@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { ConfigService } from '../../config/config.service';
 import { MinioService } from '../../infrastructure/minio/minio.service';
+import { MqttService } from '../../infrastructure/mqtt/mqtt.service';
 import Redis from 'ioredis';
 import * as mqtt from 'mqtt';
 
@@ -17,6 +18,7 @@ export class HealthService {
         @InjectModel(User.name) private userModel: Model<UserDocument>,
         private configService: ConfigService,
         private minioService: MinioService,
+        private mqttService: MqttService,
     ) {
         this.startTime = Date.now();
 
@@ -44,11 +46,18 @@ export class HealthService {
             this.checkMinio(),
         ]);
 
-        const [backend, database, redis, mqtt, minio] = services.map(result =>
+        // Use MqttService connection info instead of separate client check
+        const mqttInfo = this.mqttService.getConnectionInfo();
+        const mqttHealth = {
+            status: mqttInfo.connected ? 'up' : 'down',
+            ...mqttInfo,
+        };
+
+        const [backend, database, redis, mqttOld, minio] = services.map(result =>
             result.status === 'fulfilled' ? result.value : { status: 'down' as const, error: (result.reason as Error)?.message || 'Unknown error' }
         );
 
-        const allUp = [backend, database, redis, mqtt, minio].every((s: any) => s.status === 'up');
+        const allUp = [backend, database, redis, mqttHealth, minio].every((s: any) => s.status === 'up');
 
         return {
             status: allUp ? 'ok' : 'degraded',
@@ -57,7 +66,7 @@ export class HealthService {
                 backend,
                 database,
                 redis,
-                mqtt,
+                        mqtt: mqttHealth,
                 minio,
             },
         };
@@ -121,6 +130,8 @@ export class HealthService {
         }
     }
 
+    // DEPRECATED: Use MqttService.getConnectionInfo() instead
+    // Keeping for backward compatibility but using MqttService in main health check
     private async checkMqtt() {
         try {
             return new Promise((resolve) => {
