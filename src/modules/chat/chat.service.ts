@@ -8,6 +8,8 @@ import { UserService } from '../user/user.service';
 import { BlockService } from '../block/block.service';
 import { ContactService } from '../contact/contact.service';
 import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
+import { ReceiptService } from './receipt.service';
+import { generateUlid } from '../../common/utils/ulid.util';
 
 @Injectable()
 export class ChatService {
@@ -21,6 +23,7 @@ export class ChatService {
     private blockService: BlockService,
     private contactService: ContactService,
     private urlNormalizer: UrlNormalizerService,
+    private receiptService: ReceiptService,
   ) { }
 
   async createOrGetDirectConversation(userId1: string, userId2: string): Promise<ConversationDocument> {
@@ -135,7 +138,7 @@ export class ChatService {
   async createMessage(
     conversationId: string,
     senderId: string,
-    payload: { type: string; text?: string; content?: string; media?: any },
+    payload: { type: string; text?: string; content?: string; media?: any; message_id?: string },
   ): Promise<MessageDocument> {
     // ... existing implementation ...
     try {
@@ -160,12 +163,18 @@ export class ChatService {
         }
       }
 
+      // Generate message_id if not provided (idempotency: client can provide to prevent duplicates)
+      const messageId = payload.message_id || generateUlid();
+      const serverTs = new Date();
+
       const messageData: any = {
+        message_id: messageId,
         conversation_id: conversationId,
         sender_id: senderId,
+        server_ts: serverTs,
         type: payload.type,
-        status: 'sent',
-        sent_at: new Date(),
+        status: 'sent', // DEPRECATED: Status is computed from receipts
+        sent_at: serverTs,
       };
 
       // Handle both 'content' and 'text' fields for backward compatibility
@@ -178,41 +187,46 @@ export class ChatService {
         messageData.media = payload.media;
       }
 
-      this.logger.debug('Creating message document...');
-      const message = await this.messageModel.create(messageData);
-      this.logger.debug(`Message created with ID: ${message._id}`);
+      // Idempotency: upsert by message_id (if client provides same message_id, return existing)
+      this.logger.debug(`Creating message with message_id: ${messageId}`);
+      let message = await this.messageModel.findOne({ message_id: messageId }).exec();
+      
+      if (message) {
+        this.logger.debug(`Message with message_id ${messageId} already exists (idempotent)`);
+        return message;
+      }
+
+      message = await this.messageModel.create(messageData);
+      this.logger.debug(`Message created with message_id: ${messageId}, _id: ${message._id}`);
 
       // Immediately publish to MQTT BEFORE updating conversation for real-time delivery
       // This ensures message arrives instantly to recipient without waiting for conversation update
       // QoS 1 ensures guaranteed delivery to recipient
       // Also publish to sender for real-time update in their own chat detail
       const messagePayload = {
+        type: 'message',
+        message_id: messageId,
         conversation_id: conversationId,
-        message: {
-          id: message._id.toString(),
-          conversation_id: conversationId,
-          sender_id: senderId,
-          type: payload.type,
+        sender_id: senderId,
+        server_ts: serverTs.toISOString(),
+        payload: {
           text: messageText,
           media: payload.media,
-          status: message.status,
-          created_at: message.created_at ? message.created_at.toISOString() : new Date().toISOString(),
         },
       };
 
-      // Publish to recipient for real-time message delivery
-      if (conversation && recipientId) {
-        this.mqttService.publishAsync(`chat/${recipientId}/messages`, messagePayload).catch((error) => {
-          this.logger.error(`Failed to publish message to recipient ${recipientId}:`, error);
-        });
-        this.logger.debug(`Published new message to chat/${recipientId}/messages - recipient will receive in real-time`);
-      }
+      // Publish to all conversation members (for multi-device support)
+      // For 1-1: recipient + sender
+      // For group: all members
+      const membersToNotify = conversation.participant_ids;
 
-      // Publish to sender for real-time update in their chat detail (shows message immediately)
-      this.mqttService.publishAsync(`chat/${senderId}/messages`, messagePayload).catch((error) => {
-        this.logger.error(`Failed to publish message to sender ${senderId}:`, error);
-      });
-      this.logger.debug(`Published new message to chat/${senderId}/messages - sender will see message in real-time`);
+      for (const memberId of membersToNotify) {
+        const topic = `chat/v1/users/${memberId}/messages`;
+        this.mqttService.publishAsync(topic, messagePayload).catch((error) => {
+          this.logger.error(`Failed to publish message to ${topic}:`, error);
+        });
+        this.logger.debug(`Published new message to ${topic}`);
+      }
 
       // Update conversation (this can happen in parallel, doesn't block MQTT)
       this.logger.debug('Updating conversation...');
@@ -376,14 +390,14 @@ export class ChatService {
 
     const query = this.messageModel
       .find({ conversation_id: conversationId })
-      .sort({ created_at: -1 });
+      .sort({ server_ts: -1 }); // Use server_ts for ordering (consistent with message ordering)
 
     if (before) {
       // Assuming 'before' is a message ID for cursor-based pagination
       try {
-        const beforeMessage = await this.messageModel.findById(before).exec();
-        if (beforeMessage && beforeMessage.created_at) {
-          query.where('created_at').lt(beforeMessage.created_at.getTime() as any);
+        const beforeMessage = await this.messageModel.findOne({ message_id: before }).exec();
+        if (beforeMessage && beforeMessage.server_ts) {
+          query.where('server_ts').lt(beforeMessage.server_ts);
         }
       } catch (e) {
         // Ignore invalid ID for before param
@@ -407,18 +421,58 @@ export class ChatService {
       }
     }
 
-    return messages.map(msg => ({
-      id: msg._id,
-      text: msg.text,
-      sender_id: msg.sender_id,
-      type: msg.type,
-      media: msg.media,
-      status: msg.status,
-      sent_at: msg.sent_at,
-      delivered_at: msg.delivered_at,
-      read_at: msg.read_at,
-      created_at: msg.created_at,
-    }));
+    // Get conversation type for status computation
+    const conversation = await this.conversationModel.findById(conversationId).exec();
+    if (!conversation) {
+      throw new Error('Conversation not found');
+    }
+
+    // Compute status for each message if it's outgoing (sent by current user)
+    const messagesWithStatus = await Promise.all(
+      messages.map(async (msg) => {
+        const isOutgoing = msg.sender_id === userId;
+        
+        let computedStatus: any = {
+          status: 'sent' as const,
+        };
+
+        if (isOutgoing) {
+          // Compute status from receipts
+          computedStatus = await this.receiptService.computeMessageStatus(
+            conversationId,
+            msg.message_id,
+            userId,
+            conversation.type,
+          );
+        }
+
+        return {
+          id: msg._id,
+          message_id: msg.message_id,
+          text: msg.text,
+          sender_id: msg.sender_id,
+          type: msg.type,
+          media: msg.media,
+          status: computedStatus.status, // Computed status, not stored status
+          ...(conversation.type === 'group' && isOutgoing && 'delivered_count' in computedStatus
+            ? {
+                delivered_count: computedStatus.delivered_count,
+                read_count: computedStatus.read_count,
+                member_count_excluding_sender: computedStatus.member_count_excluding_sender,
+                is_fully_delivered: computedStatus.is_fully_delivered,
+                is_fully_read: computedStatus.is_fully_read,
+              }
+            : {}),
+          sent_at: msg.sent_at,
+          delivered_at: msg.delivered_at,
+          read_at: msg.read_at,
+          server_ts: msg.server_ts,
+          created_at: msg.created_at,
+        };
+      })
+    );
+
+    return messagesWithStatus;
   }
 
   async createPrivateCommentMessage(
@@ -435,34 +489,34 @@ export class ChatService {
     });
   }
 
-  async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
+  async markMessagesAsRead(
+    conversationId: string,
+    userId: string,
+    lastReadMessageId?: string,
+  ): Promise<void> {
     // Verify user is participant
     const conversation = await this.conversationModel.findById(conversationId).exec();
     if (!conversation || !conversation.participant_ids.includes(userId)) {
       throw new Error('Conversation not found or access denied');
     }
 
-    // Find the other participant (sender of the messages)
-    const senderId = conversation.participant_ids.find(id => id !== userId);
+    // If lastReadMessageId is provided, use watermark-based approach
+    if (lastReadMessageId) {
+      await this.receiptService.processReadUpTo(conversationId, userId, lastReadMessageId);
+      this.logger.log(`Marked messages as read (watermark): conversationId=${conversationId}, userId=${userId}, lastReadMessageId=${lastReadMessageId}`);
+      return;
+    }
 
-    // Update all unread messages from other participants
-    const now = new Date();
-    const result = await this.messageModel.updateMany(
-      {
-        conversation_id: conversationId,
-        sender_id: { $ne: userId }, // Not sent by current user
-        status: { $in: ['sent', 'delivered'] } // Only update if not already read
-      },
-      {
-        $set: {
-          status: 'read',
-          read_at: now
-        },
-        $addToSet: { read_by: userId }
-      }
-    ).exec();
+    // Legacy approach: find last message and use watermark
+    const lastMessage = await this.messageModel
+      .findOne({ conversation_id: conversationId, sender_id: { $ne: userId } })
+      .sort({ server_ts: -1 })
+      .exec();
 
-    this.logger.log(`Marked messages as read: conversationId=${conversationId}, userId=${userId}, updated=${result.modifiedCount}`);
+    if (lastMessage) {
+      await this.receiptService.processReadUpTo(conversationId, userId, lastMessage.message_id);
+      this.logger.log(`Marked messages as read (auto): conversationId=${conversationId}, userId=${userId}, lastMessageId=${lastMessage.message_id}`);
+    }
 
     // Immediately publish read receipt updates to MQTT if any messages were updated
     // This ensures real-time updates in both detail chat and conversation list

@@ -83,19 +83,41 @@ export class ChatController {
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   async sendMessage(
     @CurrentUser() user: { userId: string },
-    @Body() body: { conversationId: string; content: string; attachments?: any, text?: string; type?: string },
+    @Body() body: { 
+      conversationId: string; 
+      content: string; 
+      attachments?: any; 
+      text?: string; 
+      type?: string;
+      message_id?: string; // Optional: client-generated message ID for idempotency
+    },
   ) {
     // Map 'content' to 'text' if needed or let service handle it.
     // Map 'attachments' to 'media' if needed.
     // Default type to 'text' if not provided (though user requirement implies content usually means text).
     const payload = {
       type: body.type || (body.attachments ? 'image' : 'text'), // Simplistic type inference
-      text: body.content,
+      text: body.content || body.text,
       media: body.attachments,
+      message_id: body.message_id, // Support client-generated message_id for idempotency
       // Pass original body just in case
       ...body
     };
-    return this.chatService.createMessage(body.conversationId, user.userId, payload);
+    const message = await this.chatService.createMessage(body.conversationId, user.userId, payload);
+    
+    // Return response with message_id
+    return {
+      message_id: message.message_id,
+      id: message._id,
+      conversation_id: message.conversation_id,
+      sender_id: message.sender_id,
+      type: message.type,
+      text: message.text,
+      media: message.media,
+      status: 'sent', // Initial status
+      server_ts: message.server_ts,
+      created_at: message.created_at,
+    };
   }
 
   // Legacy endpoint support (optional, but good to keep for now or verify if user wants to keep it)
@@ -198,10 +220,19 @@ export class ChatController {
 
   @Post('conversations/:id/read')
   @ApiOperation({ 
-    summary: 'Mark all messages in conversation as read',
-    description: 'Manually mark all messages in a conversation as read. This endpoint can be called anytime to mark messages as read in real-time, especially useful when user is already in detail chat. Note: Messages are also automatically marked as read when opening a chat via GET /chat/conversations/:id/messages (without "before" parameter) or POST /chat/conversations/ensure.'
+    summary: 'Mark messages in conversation as read',
+    description: 'Mark messages in a conversation as read using watermark approach. Can specify last_read_message_id to mark up to that message, or omit to mark all unread messages. Note: Messages are also automatically marked as read when opening a chat via GET /chat/conversations/:id/messages (without "before" parameter) or POST /chat/conversations/ensure.'
   })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        last_read_message_id: { type: 'string', description: 'Optional: Last message ID to mark as read. If omitted, marks all unread messages.' },
+      },
+    },
+    required: false,
+  })
   @ApiResponse({
     status: 200,
     description: 'Messages marked as read',
@@ -219,9 +250,10 @@ export class ChatController {
   async markConversationAsRead(
     @CurrentUser() user: { userId: string },
     @Param('id') conversationId: string,
+    @Body() body?: { last_read_message_id?: string },
   ) {
     try {
-      await this.chatService.markMessagesAsRead(conversationId, user.userId);
+      await this.chatService.markMessagesAsRead(conversationId, user.userId, body?.last_read_message_id);
       return {
         success: true,
         message: 'Messages marked as read',
