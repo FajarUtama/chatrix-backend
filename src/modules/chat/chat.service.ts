@@ -388,32 +388,38 @@ export class ChatService {
       throw new Error('Conversation not found or access denied');
     }
 
-    const query = this.messageModel
-      .find({ conversation_id: conversationId })
-      .sort({ server_ts: -1 }); // Use server_ts for ordering (consistent with message ordering)
-
+    // Build query for pagination
+    const queryFilter: any = { conversation_id: conversationId };
+    
     if (before) {
       // Assuming 'before' is a message ID for cursor-based pagination
       try {
         const beforeMessage = await this.messageModel.findOne({ message_id: before }).exec();
         if (beforeMessage && beforeMessage.server_ts) {
-          query.where('server_ts').lt(beforeMessage.server_ts);
+          // Filter messages before this server_ts
+          queryFilter.server_ts = { $lt: beforeMessage.server_ts };
         }
       } catch (e) {
         // Ignore invalid ID for before param
       }
     }
 
-    const messages = await query.limit(limit).exec();
+    const messages = await this.messageModel
+      .find(queryFilter)
+      .sort({ server_ts: -1 }) // Use server_ts for ordering (consistent with message ordering)
+      .limit(limit)
+      .exec();
 
     // Automatically mark messages as read when user opens/views the chat
     // Only mark as read if this is the first page (no 'before' parameter)
     // This prevents marking old messages as read when paginating
     // IMPORTANT: This ensures real-time mark as read every time user views the latest messages
-    if (!before) {
+    if (!before && messages.length > 0) {
       try {
         // Mark as read immediately - this will trigger MQTT publish for real-time updates
-        await this.markMessagesAsRead(conversationId, userId);
+        // Use the latest message_id as watermark
+        const latestMessage = messages[0]; // Already sorted by server_ts desc
+        await this.markMessagesAsRead(conversationId, userId, latestMessage.message_id);
         this.logger.debug(`Auto-marked messages as read for conversationId=${conversationId}, userId=${userId}`);
       } catch (error) {
         // Log error but don't fail the request
@@ -421,11 +427,7 @@ export class ChatService {
       }
     }
 
-    // Get conversation type for status computation
-    const conversation = await this.conversationModel.findById(conversationId).exec();
-    if (!conversation) {
-      throw new Error('Conversation not found');
-    }
+    // Conversation already fetched at the beginning, reuse it for status computation
 
     // Compute status for each message if it's outgoing (sent by current user)
     const messagesWithStatus = await Promise.all(
@@ -517,80 +519,9 @@ export class ChatService {
       await this.receiptService.processReadUpTo(conversationId, userId, lastMessage.message_id);
       this.logger.log(`Marked messages as read (auto): conversationId=${conversationId}, userId=${userId}, lastMessageId=${lastMessage.message_id}`);
     }
-
-    // Immediately publish read receipt updates to MQTT if any messages were updated
-    // This ensures real-time updates in both detail chat and conversation list
-    if (result.modifiedCount > 0) {
-      // 1. Publish read receipt to sender (for real-time status update in their chat detail)
-      // This allows sender to see their messages marked as "read" in real-time
-      if (senderId) {
-        const readReceiptPayload = {
-          conversation_id: conversationId,
-          read_by: userId,
-          read_at: now.toISOString(), // Ensure ISO string format
-          count: result.modifiedCount
-        };
-        
-        // Publish immediately - fire and forget, no blocking
-        // QoS 1 ensures guaranteed delivery to sender for real-time status update
-        this.mqttService.publishAsync(`chat/${senderId}/read-receipts`, readReceiptPayload).catch((error) => {
-          this.logger.error(`Failed to publish read receipt to sender ${senderId}:`, error);
-        });
-        this.logger.debug(`Published read receipt to chat/${senderId}/read-receipts - sender will receive status update in real-time`);
-      }
-
-      // 2. Publish message status update to current user (for real-time update in their detail chat)
-      // This updates the message status from 'sent'/'delivered' to 'read' in real-time for the reader
-      // QoS 1 ensures guaranteed delivery to reader for real-time status update
-      this.mqttService.publishAsync(`chat/${userId}/messages-status`, {
-        conversation_id: conversationId,
-        action: 'marked_as_read',
-        read_by: userId,
-        read_at: now.toISOString(),
-        count: result.modifiedCount
-      }).catch((error) => {
-        this.logger.error(`Failed to publish message status update to reader ${userId}:`, error);
-      });
-      this.logger.debug(`Published message status update to chat/${userId}/messages-status - reader will receive status update in real-time`);
-
-      // 3. Publish conversation update to both participants (for real-time update in conversation list)
-      // This updates unread count and last message status in conversation list for both users
-      // QoS 1 ensures guaranteed delivery to all participants for real-time list update
-      
-      // Get last message to determine sender and status
-      const lastMessage = await this.messageModel
-        .findOne({ conversation_id: conversationId })
-        .sort({ created_at: -1 })
-        .exec();
-      
-      const lastMessageSenderId = lastMessage?.sender_id?.toString() || null;
-      const lastMessageStatus = lastMessage?.status || null;
-
-      conversation.participant_ids.forEach(participantId => {
-        const isLastMessageFromMe = lastMessageSenderId === participantId;
-        
-        const updatePayload: any = {
-          conversation_id: conversationId,
-          action: 'messages_read',
-          read_by: userId,
-          read_at: now.toISOString(),
-          last_message_sender_id: lastMessageSenderId,
-        };
-
-        // If last message is from current participant, show status
-        // If last message is from other participant, show unread_count (0 after read)
-        if (isLastMessageFromMe) {
-          updatePayload.last_message_status = lastMessageStatus; // sent, delivered, or read
-        } else {
-          updatePayload.unread_count = 0; // All messages are now read - update badge count
-        }
-
-        this.mqttService.publishAsync(`chat/${participantId}/conversations`, updatePayload).catch((error) => {
-          this.logger.error(`Failed to publish conversation update to participant ${participantId}:`, error);
-        });
-        this.logger.debug(`Published conversation update to chat/${participantId}/conversations - participant will receive list update in real-time`);
-      });
-    }
+    
+    // Note: Receipt publishing is handled by receiptService.processReadUpTo()
+    // which publishes to chat/v1/users/{uid}/receipts for all relevant users
   }
 }
 
