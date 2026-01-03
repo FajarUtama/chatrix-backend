@@ -237,30 +237,54 @@ export class ChatService {
 
       // Also publish conversation update for real-time list update
       if (conversation && recipientId) {
-        // Count unread messages for recipient (messages not sent by recipient and not read by recipient)
-        const unreadCount = await this.messageModel.countDocuments({
-          conversation_id: conversationId,
-          sender_id: { $ne: recipientId },
-          status: { $in: ['sent', 'delivered'] },
-          read_by: { $nin: [recipientId] }
-        }).exec();
+        // Count unread messages for recipient using watermark receipts (accurate)
+        const recipientReceipt = await this.receiptService.getReceiptForUser(conversationId, recipientId);
+        let unreadCount = 0;
+        
+        if (recipientReceipt && recipientReceipt.last_read_message_id) {
+          // If recipient has read some messages, count messages after last_read_message_id
+          const lastReadMessage = await this.messageModel
+            .findOne({ message_id: recipientReceipt.last_read_message_id })
+            .exec();
+          
+          if (lastReadMessage) {
+            // Count messages sent by sender after the last read message (including this new message)
+            unreadCount = await this.messageModel.countDocuments({
+              conversation_id: conversationId,
+              sender_id: senderId,
+              server_ts: { $gt: lastReadMessage.server_ts },
+            }).exec();
+          } else {
+            // If last_read_message_id not found, count all messages from sender (fallback)
+            unreadCount = await this.messageModel.countDocuments({
+              conversation_id: conversationId,
+              sender_id: senderId,
+            }).exec();
+          }
+        } else {
+          // No receipt yet, count all messages from sender as unread (including this new message)
+          unreadCount = await this.messageModel.countDocuments({
+            conversation_id: conversationId,
+            sender_id: senderId,
+          }).exec();
+        }
 
-        this.mqttService.publishAsync(`chat/${recipientId}/conversations`, {
+        this.mqttService.publishAsync(`chat/v1/users/${recipientId}/conversations`, {
           conversation_id: conversationId,
           last_message_at: new Date().toISOString(),
           last_message_preview: messageText || '[Media]',
           last_message_sender_id: senderId,
-          unread_count: unreadCount, // Accurate unread count
+          unread_count: unreadCount, // Accurate unread count using watermark receipts
           action: 'updated',
         }).catch((error) => {
           this.logger.error(`Failed to publish conversation update to recipient ${recipientId}:`, error);
         });
-        this.logger.debug(`Published conversation update to chat/${recipientId}/conversations`);
+        this.logger.debug(`Published conversation update to chat/v1/users/${recipientId}/conversations`);
       }
 
       // Also publish conversation update for sender (to update last_message_status)
       if (conversation && recipientId) {
-        this.mqttService.publishAsync(`chat/${senderId}/conversations`, {
+        this.mqttService.publishAsync(`chat/v1/users/${senderId}/conversations`, {
           conversation_id: conversationId,
           last_message_at: new Date().toISOString(),
           last_message_preview: messageText || '[Media]',
@@ -270,7 +294,7 @@ export class ChatService {
         }).catch((error) => {
           this.logger.error(`Failed to publish conversation update to sender ${senderId}:`, error);
         });
-        this.logger.debug(`Published conversation update to chat/${senderId}/conversations`);
+        this.logger.debug(`Published conversation update to chat/v1/users/${senderId}/conversations`);
       }
 
       this.logger.log(`Message created successfully: ${message._id}`);
@@ -307,21 +331,57 @@ export class ChatService {
         // Get last message for this conversation
         const lastMessage = await this.messageModel
           .findOne({ conversation_id: conv._id.toString() })
-          .sort({ created_at: -1 })
+          .sort({ server_ts: -1 })
           .exec();
 
-        // Get last message sender ID and status
+        // Get last message sender ID
         const lastMessageSenderId = lastMessage?.sender_id?.toString() || null;
-        const lastMessageStatus = lastMessage?.status || null;
         const isLastMessageFromMe = lastMessageSenderId === userId;
 
-        // Count unread messages (messages not sent by current user and not read by current user)
-        const unreadCount = await this.messageModel.countDocuments({
-          conversation_id: conv._id.toString(),
-          sender_id: { $ne: userId },
-          status: { $in: ['sent', 'delivered'] },
-          read_by: { $nin: [userId] } // userId not in read_by array
-        }).exec();
+        // Get computed status for last message if it's from current user
+        let lastMessageStatus = null;
+        if (isLastMessageFromMe && lastMessage) {
+          const statusResult = await this.receiptService.computeMessageStatus(
+            conv._id.toString(),
+            lastMessage.message_id,
+            userId,
+            conv.type,
+          );
+          lastMessageStatus = statusResult.status;
+        }
+
+        // Count unread messages using watermark receipts (more accurate)
+        // Get receipt watermark for current user
+        const userReceipt = await this.receiptService.getReceiptForUser(conv._id.toString(), userId);
+        
+        let unreadCount = 0;
+        if (userReceipt && userReceipt.last_read_message_id) {
+          // If user has read some messages, count messages after last_read_message_id
+          const lastReadMessage = await this.messageModel
+            .findOne({ message_id: userReceipt.last_read_message_id })
+            .exec();
+          
+          if (lastReadMessage) {
+            // Count messages sent by others after the last read message
+            unreadCount = await this.messageModel.countDocuments({
+              conversation_id: conv._id.toString(),
+              sender_id: { $ne: userId },
+              server_ts: { $gt: lastReadMessage.server_ts },
+            }).exec();
+          } else {
+            // If last_read_message_id not found, count all unread (fallback)
+            unreadCount = await this.messageModel.countDocuments({
+              conversation_id: conv._id.toString(),
+              sender_id: { $ne: userId },
+            }).exec();
+          }
+        } else {
+          // No receipt yet, count all messages from others as unread
+          unreadCount = await this.messageModel.countDocuments({
+            conversation_id: conv._id.toString(),
+            sender_id: { $ne: userId },
+          }).exec();
+        }
 
         if (contactId) {
           const user = await this.userService.findById(contactId);
