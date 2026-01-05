@@ -429,12 +429,15 @@ export class ChatService {
           } : {
             unread_count: unreadCount, // Number of unread messages
           }),
-          relationship: {
-            is_contact: isContact,
-            i_blocked_them: iBlockedThem,
-            they_blocked_me: theyBlockedMe,
-            can_message: !iBlockedThem && !theyBlockedMe,
-          },
+          // Only include relationship field if is_contact is false
+          ...(!isContact ? {
+            relationship: {
+              is_contact: isContact,
+              i_blocked_them: iBlockedThem,
+              they_blocked_me: theyBlockedMe,
+              can_message: !iBlockedThem && !theyBlockedMe,
+            },
+          } : {}),
         };
       })
     );
@@ -442,7 +445,7 @@ export class ChatService {
     return conversationsWithContacts;
   }
 
-  async getMessages(conversationId: string, userId: string, limit: number = 20, before?: string): Promise<any[]> {
+  async getMessages(conversationId: string, userId: string, limit: number = 20, before?: string): Promise<any> {
     const conversation = await this.conversationModel.findById(conversationId).exec();
     if (!conversation || !conversation.participant_ids.includes(userId)) {
       throw new Error('Conversation not found or access denied');
@@ -467,18 +470,22 @@ export class ChatService {
     const messages = await this.messageModel
       .find(queryFilter)
       .sort({ server_ts: -1 }) // Use server_ts for ordering (consistent with message ordering)
-      .limit(limit)
+      .limit(limit + 1) // Fetch one extra to check if there are more messages
       .exec();
+
+    // Check if there are more messages
+    const hasMore = messages.length > limit;
+    const messagesToReturn = hasMore ? messages.slice(0, limit) : messages;
 
     // Automatically mark messages as read when user opens/views the chat
     // Only mark as read if this is the first page (no 'before' parameter)
     // This prevents marking old messages as read when paginating
     // IMPORTANT: This ensures real-time mark as read every time user views the latest messages
-    if (!before && messages.length > 0) {
+    if (!before && messagesToReturn.length > 0) {
       try {
         // Mark as read immediately - this will trigger MQTT publish for real-time updates
         // Use the latest message_id as watermark
-        const latestMessage = messages[0]; // Already sorted by server_ts desc
+        const latestMessage = messagesToReturn[0]; // Already sorted by server_ts desc
         await this.markMessagesAsRead(conversationId, userId, latestMessage.message_id);
         this.logger.debug(`Auto-marked messages as read for conversationId=${conversationId}, userId=${userId}`);
       } catch (error) {
@@ -491,7 +498,7 @@ export class ChatService {
 
     // Compute status for each message if it's outgoing (sent by current user)
     const messagesWithStatus = await Promise.all(
-      messages.map(async (msg) => {
+      messagesToReturn.map(async (msg) => {
         const isOutgoing = msg.sender_id === userId;
         
         let computedStatus: any = {
@@ -534,7 +541,39 @@ export class ChatService {
       })
     );
 
-    return messagesWithStatus;
+    // Get relationship info (only for direct conversations and only if is_contact = false)
+    let relationship: any = undefined;
+    if (conversation.type === 'direct') {
+      const contactId = conversation.participant_ids.find(id => id !== userId);
+      if (contactId) {
+        const contacts = await this.contactService.getContacts(userId);
+        const contact = contacts.find((c: any) => c.id.toString() === contactId);
+        const isContact = !!contact;
+
+        // Only include relationship if is_contact is false
+        if (!isContact) {
+          const blockStatus = await this.blockService.getBlockStatus(userId, contactId);
+          relationship = {
+            is_contact: false,
+            i_blocked_them: blockStatus.iBlocked,
+            they_blocked_me: blockStatus.theyBlocked,
+            can_message: !blockStatus.iBlocked && !blockStatus.theyBlocked,
+          };
+        }
+      }
+    }
+
+    // Get next_cursor (message_id of the last message if there are more)
+    const nextCursor = hasMore && messagesToReturn.length > 0 
+      ? messagesToReturn[messagesToReturn.length - 1].message_id 
+      : undefined;
+
+    return {
+      messages: messagesWithStatus,
+      ...(nextCursor ? { next_cursor: nextCursor } : {}),
+      has_more: hasMore,
+      ...(relationship ? { relationship } : {}),
+    };
   }
 
   async createPrivateCommentMessage(
