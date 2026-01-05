@@ -413,6 +413,24 @@ export class ChatService {
           theyBlockedMe = blockStatus.theyBlocked;
         }
 
+        // Build relationship array for all participants (except current user)
+        const relationship: any[] = [];
+        const otherParticipantIds = conv.participant_ids.filter(id => id !== userId);
+        
+        for (const participantId of otherParticipantIds) {
+          const contact = contacts.find((c: any) => c.id.toString() === participantId);
+          const isParticipantContact = !!contact;
+          const blockStatus = await this.blockService.getBlockStatus(userId, participantId);
+
+          relationship.push({
+            user_id: participantId,
+            is_contact: isParticipantContact,
+            i_blocked_them: blockStatus.iBlocked,
+            they_blocked_me: blockStatus.theyBlocked,
+            can_message: !blockStatus.iBlocked && !blockStatus.theyBlocked,
+          });
+        }
+
         return {
           id: conv._id,
           type: conv.type,
@@ -435,15 +453,7 @@ export class ChatService {
           } : {
             unread_count: unreadCount, // Number of unread messages
           }),
-          // Only include relationship field if is_contact is false
-          ...(!isContact ? {
-            relationship: {
-              is_contact: isContact,
-              i_blocked_them: iBlockedThem,
-              they_blocked_me: theyBlockedMe,
-              can_message: !iBlockedThem && !theyBlockedMe,
-            },
-          } : {}),
+          relationship,
         };
       })
     );
@@ -585,26 +595,23 @@ export class ChatService {
       })
     );
 
-    // Get relationship info (only for direct conversations and only if is_contact = false)
-    let relationship: any = undefined;
-    if (conversation.type === 'direct') {
-      const contactId = conversation.participant_ids.find(id => id !== userId);
-      if (contactId) {
-        const contacts = await this.contactService.getContacts(userId);
-        const contact = contacts.find((c: any) => c.id.toString() === contactId);
-        const isContact = !!contact;
+    // Get relationship info for all participants (except current user)
+    const relationship: any[] = [];
+    const otherParticipantIds = conversation.participant_ids.filter(id => id !== userId);
+    const contacts = await this.contactService.getContacts(userId);
 
-        // Only include relationship if is_contact is false
-        if (!isContact) {
-          const blockStatus = await this.blockService.getBlockStatus(userId, contactId);
-          relationship = {
-            is_contact: false,
-            i_blocked_them: blockStatus.iBlocked,
-            they_blocked_me: blockStatus.theyBlocked,
-            can_message: !blockStatus.iBlocked && !blockStatus.theyBlocked,
-          };
-        }
-      }
+    for (const participantId of otherParticipantIds) {
+      const contact = contacts.find((c: any) => c.id.toString() === participantId);
+      const isContact = !!contact;
+      const blockStatus = await this.blockService.getBlockStatus(userId, participantId);
+
+      relationship.push({
+        user_id: participantId,
+        is_contact: isContact,
+        i_blocked_them: blockStatus.iBlocked,
+        they_blocked_me: blockStatus.theyBlocked,
+        can_message: !blockStatus.iBlocked && !blockStatus.theyBlocked,
+      });
     }
 
     // Get next_cursor (message_id of the last message if there are more)
@@ -616,7 +623,7 @@ export class ChatService {
       messages: messagesWithStatus,
       ...(nextCursor ? { next_cursor: nextCursor } : {}),
       has_more: hasMore,
-      ...(relationship ? { relationship } : {}),
+      relationship,
     };
   }
 
