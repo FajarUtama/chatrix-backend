@@ -9,6 +9,7 @@ import { BlockService } from '../block/block.service';
 import { ContactService } from '../contact/contact.service';
 import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 import { ReceiptService } from './receipt.service';
+import { StorageService, FileType } from '../storage/storage.service';
 import { generateUlid } from '../../common/utils/ulid.util';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class ChatService {
     private contactService: ContactService,
     private urlNormalizer: UrlNormalizerService,
     private receiptService: ReceiptService,
+    private storageService: StorageService,
   ) { }
 
   async createOrGetDirectConversation(userId1: string, userId2: string): Promise<ConversationDocument> {
@@ -138,7 +140,7 @@ export class ChatService {
   async createMessage(
     conversationId: string,
     senderId: string,
-    payload: { type: string; text?: string; content?: string; media?: any; message_id?: string },
+    payload: { type: string; text?: string; content?: string; media?: any; message_id?: string; reply_to_message_id?: string },
   ): Promise<MessageDocument> {
     // ... existing implementation ...
     try {
@@ -185,6 +187,10 @@ export class ChatService {
 
       if (payload.media) {
         messageData.media = payload.media;
+      }
+
+      if (payload.reply_to_message_id) {
+        messageData.reply_to_message_id = payload.reply_to_message_id;
       }
 
       // Idempotency: upsert by message_id (if client provides same message_id, return existing)
@@ -495,8 +501,10 @@ export class ChatService {
     }
 
     // Conversation already fetched at the beginning, reuse it for status computation
+    // Get all receipts for this conversation to compute received_at and read_at
+    const receipts = await this.receiptService.getReceiptsForConversation(conversationId);
 
-    // Compute status for each message if it's outgoing (sent by current user)
+    // Compute status, received_at, and read_at for each message
     const messagesWithStatus = await Promise.all(
       messagesToReturn.map(async (msg) => {
         const isOutgoing = msg.sender_id === userId;
@@ -504,6 +512,8 @@ export class ChatService {
         let computedStatus: any = {
           status: 'sent' as const,
         };
+        let receivedAt: Date | null = null;
+        let readAt: Date | null = null;
 
         if (isOutgoing) {
           // Compute status from receipts
@@ -513,6 +523,34 @@ export class ChatService {
             userId,
             conversation.type,
           );
+
+          // Compute received_at and read_at from receipts
+          if (conversation.type === 'direct') {
+            const recipientId = conversation.participant_ids.find(id => id !== userId);
+            if (recipientId) {
+              const recipientReceipt = receipts.find(r => r.user_id === recipientId);
+              if (recipientReceipt) {
+                // Check if message was delivered
+                if (recipientReceipt.last_delivered_message_id) {
+                  const deliveredMsg = await this.messageModel
+                    .findOne({ message_id: recipientReceipt.last_delivered_message_id })
+                    .exec();
+                  if (deliveredMsg && deliveredMsg.server_ts >= msg.server_ts) {
+                    receivedAt = recipientReceipt.last_delivered_at || null;
+                  }
+                }
+                // Check if message was read
+                if (recipientReceipt.last_read_message_id) {
+                  const readMsg = await this.messageModel
+                    .findOne({ message_id: recipientReceipt.last_read_message_id })
+                    .exec();
+                  if (readMsg && readMsg.server_ts >= msg.server_ts) {
+                    readAt = recipientReceipt.last_read_at || null;
+                  }
+                }
+              }
+            }
+          }
         }
 
         return {
@@ -521,7 +559,13 @@ export class ChatService {
           text: msg.text,
           sender_id: msg.sender_id,
           type: msg.type,
-          media: msg.media,
+          media: msg.media ? {
+            ...msg.media,
+            // Ensure URL is normalized if it exists
+            url: msg.media.url ? this.urlNormalizer.normalizeUrl(msg.media.url) : msg.media.url,
+            thumb_url: msg.media.thumb_url ? this.urlNormalizer.normalizeUrl(msg.media.thumb_url) : msg.media.thumb_url,
+          } : undefined,
+          reply_to_message_id: msg.reply_to_message_id,
           status: computedStatus.status, // Computed status, not stored status
           ...(conversation.type === 'group' && isOutgoing && 'delivered_count' in computedStatus
             ? {
@@ -533,8 +577,8 @@ export class ChatService {
               }
             : {}),
           sent_at: msg.sent_at,
-          delivered_at: msg.delivered_at,
-          read_at: msg.read_at,
+          received_at: receivedAt,
+          read_at: readAt,
           server_ts: msg.server_ts,
           created_at: msg.created_at,
         };
@@ -621,6 +665,20 @@ export class ChatService {
     
     // Note: Receipt publishing is handled by receiptService.processReadUpTo()
     // which publishes to chat/v1/users/{uid}/receipts for all relevant users
+  }
+
+  /**
+   * Upload file for message (image/video/file)
+   */
+  async uploadFile(file: Express.Multer.File): Promise<{ url: string; fileType: FileType; mimeType: string; originalName: string; size: number }> {
+    const uploadedFile = await this.storageService.uploadFile(file);
+    return {
+      url: uploadedFile.url,
+      fileType: uploadedFile.fileType,
+      mimeType: uploadedFile.type,
+      originalName: uploadedFile.originalName,
+      size: uploadedFile.size,
+    };
   }
 }
 

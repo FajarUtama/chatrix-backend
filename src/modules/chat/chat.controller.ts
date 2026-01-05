@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Param, Body, UseGuards, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, UseGuards, Query, BadRequestException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -47,16 +48,18 @@ export class ChatController {
   }
 
   @Post('messages')
-  @ApiOperation({ summary: 'Send a message' })
+  @ApiOperation({ summary: 'Send a message (supports JSON or multipart/form-data for file upload)' })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
         conversationId: { type: 'string', example: '80d5ec9f5824f70015a1c004' },
         content: { type: 'string', example: 'This is a new message' },
-        attachments: { type: 'array', items: { type: 'object' } },
         text: { type: 'string' },
-        type: { type: 'string', example: 'text', enum: ['text', 'image', 'video'] },
+        type: { type: 'string', example: 'text', enum: ['text', 'image', 'video', 'file'] },
+        reply_to_message_id: { type: 'string', example: '01HZ...ULID', description: 'Optional: Message ID to reply to' },
+        message_id: { type: 'string', description: 'Optional: Client-generated message ID for idempotency' },
+        file: { type: 'string', format: 'binary', description: 'Optional: File to upload (for image/video/file type)' },
       },
     },
   })
@@ -71,7 +74,7 @@ export class ChatController {
         sender_id: { type: 'string', example: '60d5ec9f5824f70015a1c001' },
         content: { type: 'string', example: 'This is a new message' },
         type: { type: 'string', example: 'text' },
-        media: { type: 'array', items: { type: 'object' } },
+        media: { type: 'object' },
         created_at: { type: 'string', example: '2023-04-10T19:00:00.000Z' },
         status: { type: 'string', example: 'sent' },
       },
@@ -81,28 +84,38 @@ export class ChatController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Not a participant in this conversation' })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
+  @UseInterceptors(FileInterceptor('file'))
   async sendMessage(
     @CurrentUser() user: { userId: string },
     @Body() body: { 
       conversationId: string; 
-      content: string; 
-      attachments?: any; 
+      content?: string; 
       text?: string; 
       type?: string;
-      message_id?: string; // Optional: client-generated message ID for idempotency
+      reply_to_message_id?: string;
+      message_id?: string;
     },
+    @UploadedFile() file?: Express.Multer.File,
   ) {
-    // Map 'content' to 'text' if needed or let service handle it.
-    // Map 'attachments' to 'media' if needed.
-    // Default type to 'text' if not provided (though user requirement implies content usually means text).
-    const payload = {
-      type: body.type || (body.attachments ? 'image' : 'text'), // Simplistic type inference
+    const payload: any = {
+      type: body.type || 'text',
       text: body.content || body.text,
-      media: body.attachments,
-      message_id: body.message_id, // Support client-generated message_id for idempotency
-      // Pass original body just in case
-      ...body
+      message_id: body.message_id,
+      reply_to_message_id: body.reply_to_message_id,
     };
+
+    // Handle file upload if provided
+    if (file) {
+      const uploadedFile = await this.chatService.uploadFile(file);
+      payload.type = body.type || (uploadedFile.fileType === 'image' ? 'image' : uploadedFile.fileType === 'video' ? 'video' : 'file');
+      payload.media = {
+        url: uploadedFile.url,
+        type: uploadedFile.mimeType,
+        file_name: uploadedFile.originalName,
+        size: uploadedFile.size,
+      };
+    }
+
     const message = await this.chatService.createMessage(body.conversationId, user.userId, payload);
     
     // Return response with message_id
@@ -114,6 +127,7 @@ export class ChatController {
       type: message.type,
       text: message.text,
       media: message.media,
+      reply_to_message_id: message.reply_to_message_id,
       status: 'sent', // Initial status
       server_ts: message.server_ts,
       created_at: message.created_at,

@@ -12,6 +12,7 @@ import { PostModule } from '../post/post.module';
 import { UserModule } from '../user/user.module';
 import { BlockModule } from '../block/block.module';
 import { ContactModule } from '../contact/contact.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ContactModule } from '../contact/contact.module';
     UserModule,
     BlockModule,
     ContactModule,
+    StorageModule,
     forwardRef(() => PostModule),
   ],
   controllers: [ChatController],
