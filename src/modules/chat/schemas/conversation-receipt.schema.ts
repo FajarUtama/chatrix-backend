@@ -67,3 +67,5 @@ ConversationReceiptSchema.index({ conversation_id: 1 });
 // Index for querying all receipts for a user (optional, for admin queries)
 ConversationReceiptSchema.index({ user_id: 1, updated_at: -1 });
 
+
+

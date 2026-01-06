@@ -118,6 +118,11 @@ export class ChatController {
 
     const message = await this.chatService.createMessage(body.conversationId, user.userId, payload);
     
+    // Get reply message information if this is a reply
+    const replyToMessage = message.reply_to_message_id
+      ? await this.chatService.getReplyMessageInfo(message.reply_to_message_id, body.conversationId)
+      : null;
+    
     // Return response with message_id
     return {
       message_id: message.message_id,
@@ -128,6 +133,7 @@ export class ChatController {
       text: message.text,
       media: message.media,
       reply_to_message_id: message.reply_to_message_id,
+      reply_to_message: replyToMessage,
       status: 'sent', // Initial status
       server_ts: message.server_ts,
       created_at: message.created_at,

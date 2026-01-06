@@ -44,3 +44,5 @@ mosquitto_sub -h "$MQTT_BROKER" -p "$MQTT_PORT" \
   -t "$CONVERSATIONS_TOPIC" \
   -v
 
+
+

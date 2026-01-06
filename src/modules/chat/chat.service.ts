@@ -1,4 +1,4 @@
-import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Conversation, ConversationDocument } from './schemas/conversation.schema';
@@ -189,7 +189,19 @@ export class ChatService {
         messageData.media = payload.media;
       }
 
+      // Validate and handle reply_to_message_id
+      let replyToMessage = null;
       if (payload.reply_to_message_id) {
+        // Validate that the replied message exists and is in the same conversation
+        replyToMessage = await this.messageModel.findOne({
+          message_id: payload.reply_to_message_id,
+          conversation_id: conversationId,
+        }).exec();
+
+        if (!replyToMessage) {
+          throw new BadRequestException('Reply message not found or not in the same conversation');
+        }
+
         messageData.reply_to_message_id = payload.reply_to_message_id;
       }
 
@@ -205,6 +217,26 @@ export class ChatService {
       message = await this.messageModel.create(messageData);
       this.logger.debug(`Message created with message_id: ${messageId}, _id: ${message._id}`);
 
+      // Get reply message information for MQTT payload
+      let replyToMessagePayload = null;
+      if (replyToMessage) {
+        const repliedSender = await this.userService.findById(replyToMessage.sender_id);
+        replyToMessagePayload = {
+          message_id: replyToMessage.message_id,
+          sender_id: replyToMessage.sender_id,
+          sender: repliedSender ? {
+            id: repliedSender._id.toString(),
+            username: repliedSender.username,
+            full_name: repliedSender.full_name,
+            avatar_url: this.urlNormalizer.normalizeUrl(repliedSender.avatar_url || ''),
+          } : null,
+          text: replyToMessage.text,
+          type: replyToMessage.type,
+          media: replyToMessage.media,
+          created_at: replyToMessage.created_at,
+        };
+      }
+
       // Immediately publish to MQTT BEFORE updating conversation for real-time delivery
       // This ensures message arrives instantly to recipient without waiting for conversation update
       // QoS 1 ensures guaranteed delivery to recipient
@@ -218,6 +250,8 @@ export class ChatService {
         payload: {
           text: messageText,
           media: payload.media,
+          reply_to_message_id: payload.reply_to_message_id,
+          reply_to_message: replyToMessagePayload,
         },
       };
 
@@ -563,6 +597,9 @@ export class ChatService {
           }
         }
 
+        // Get reply message information if this message is a reply
+        const replyToMessage = await this.getReplyMessageInfo(msg.reply_to_message_id || '', conversationId);
+
         return {
           id: msg._id,
           message_id: msg.message_id,
@@ -576,6 +613,7 @@ export class ChatService {
             thumb_url: msg.media.thumb_url ? this.urlNormalizer.normalizeUrl(msg.media.thumb_url) : msg.media.thumb_url,
           } : undefined,
           reply_to_message_id: msg.reply_to_message_id,
+          reply_to_message: replyToMessage,
           status: computedStatus.status, // Computed status, not stored status
           ...(conversation.type === 'group' && isOutgoing && 'delivered_count' in computedStatus
             ? {
@@ -672,6 +710,47 @@ export class ChatService {
     
     // Note: Receipt publishing is handled by receiptService.processReadUpTo()
     // which publishes to chat/v1/users/{uid}/receipts for all relevant users
+  }
+
+  /**
+   * Get reply message information
+   */
+  async getReplyMessageInfo(replyToMessageId: string, conversationId: string): Promise<any> {
+    if (!replyToMessageId) {
+      return null;
+    }
+
+    const repliedMsg = await this.messageModel
+      .findOne({
+        message_id: replyToMessageId,
+        conversation_id: conversationId,
+      })
+      .exec();
+
+    if (!repliedMsg) {
+      return null;
+    }
+
+    const repliedSender = await this.userService.findById(repliedMsg.sender_id);
+    
+    return {
+      message_id: repliedMsg.message_id,
+      sender_id: repliedMsg.sender_id,
+      sender: repliedSender ? {
+        id: repliedSender._id.toString(),
+        username: repliedSender.username,
+        full_name: repliedSender.full_name,
+        avatar_url: this.urlNormalizer.normalizeUrl(repliedSender.avatar_url || ''),
+      } : null,
+      text: repliedMsg.text,
+      type: repliedMsg.type,
+      media: repliedMsg.media ? {
+        ...repliedMsg.media,
+        url: repliedMsg.media.url ? this.urlNormalizer.normalizeUrl(repliedMsg.media.url) : repliedMsg.media.url,
+        thumb_url: repliedMsg.media.thumb_url ? this.urlNormalizer.normalizeUrl(repliedMsg.media.thumb_url) : repliedMsg.media.thumb_url,
+      } : undefined,
+      created_at: repliedMsg.created_at,
+    };
   }
 
   /**

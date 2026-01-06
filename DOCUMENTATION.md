@@ -557,24 +557,41 @@ Let me check the user module to document the user-related endpoints.
   "messages": [
     {
       "id": "90d5ec9f5824f70015a1c005",
+      "message_id": "90d5ec9f5824f70015a1c005",
       "conversation_id": "80d5ec9f5824f70015a1c004",
-      "sender": {
-        "id": "60d5ec9f5824f70015a1c002",
-        "username": "janedoe",
-        "full_name": "Jane Doe",
-        "avatar_url": "https://example.com/jane-avatar.jpg"
-      },
-      "content": "Hey, how are you?",
+      "sender_id": "60d5ec9f5824f70015a1c002",
+      "text": "Hey, how are you?",
       "type": "text",
-      "created_at": "2023-04-10T18:30:00.000Z",
-      "is_me": false,
-      "status": "delivered"
+      "media": null,
+      "reply_to_message_id": "01HZ...ULID",
+      "reply_to_message": {
+        "message_id": "01HZ...ULID",
+        "sender_id": "60d5ec9f5824f70015a1c001",
+        "sender": {
+          "id": "60d5ec9f5824f70015a1c001",
+          "username": "johndoe",
+          "full_name": "John Doe",
+          "avatar_url": "https://example.com/avatar.jpg"
+        },
+        "text": "Original message",
+        "type": "text",
+        "media": null,
+        "created_at": "2023-04-10T18:00:00.000Z"
+      },
+      "status": "delivered",
+      "sent_at": "2023-04-10T18:30:00.000Z",
+      "server_ts": "2023-04-10T18:30:00.000Z",
+      "created_at": "2023-04-10T18:30:00.000Z"
     }
   ],
   "next_cursor": "90d5ec9f5824f70015a1c004",
   "has_more": true
 }
 ```
+
+**Reply Message Fields:**
+- `reply_to_message_id`: (Optional) Message ID that this message is replying to
+- `reply_to_message`: (Optional) Full information about the replied message, including sender details. Only present if `reply_to_message_id` is provided and the replied message exists in the same conversation.
 
 **Error Responses:**
 - 401 Unauthorized: Not authenticated
@@ -599,6 +616,7 @@ Let me check the user module to document the user-related endpoints.
   "conversationId": "80d5ec9f5824f70015a1c004",
   "content": "This is a new message",
   "type": "text",
+  "reply_to_message_id": "01HZ...ULID", // Optional: Message ID to reply to
   "attachments": [] // Optional array of media attachments
 }
 ```
@@ -606,16 +624,37 @@ Let me check the user module to document the user-related endpoints.
 **Response (Success - 201 Created):**
 ```json
 {
+  "message_id": "90d5ec9f5824f70015a1c007",
   "id": "90d5ec9f5824f70015a1c007",
   "conversation_id": "80d5ec9f5824f70015a1c004",
   "sender_id": "60d5ec9f5824f70015a1c001",
-  "content": "This is a new message",
+  "text": "This is a new message",
   "type": "text",
-  "media": [],
-  "created_at": "2023-04-10T19:00:00.000Z",
-  "status": "sent"
+  "media": null,
+  "reply_to_message_id": "01HZ...ULID",
+  "reply_to_message": {
+    "message_id": "01HZ...ULID",
+    "sender_id": "60d5ec9f5824f70015a1c002",
+    "sender": {
+      "id": "60d5ec9f5824f70015a1c002",
+      "username": "janedoe",
+      "full_name": "Jane Doe",
+      "avatar_url": "https://example.com/jane-avatar.jpg"
+    },
+    "text": "Original message text",
+    "type": "text",
+    "media": null,
+    "created_at": "2023-04-10T18:30:00.000Z"
+  },
+  "status": "sent",
+  "server_ts": "2023-04-10T19:00:00.000Z",
+  "created_at": "2023-04-10T19:00:00.000Z"
 }
 ```
+
+**Reply Message Fields:**
+- `reply_to_message_id`: (Optional) Message ID that this message is replying to
+- `reply_to_message`: (Optional) Full information about the replied message, including sender details. Only present if `reply_to_message_id` is provided and the replied message exists in the same conversation.
 
 **Real-Time Delivery:**
 - Message is immediately published to MQTT topic `chat/{recipientId}/messages` (for recipient)
@@ -625,10 +664,16 @@ Let me check the user module to document the user-related endpoints.
 - Both recipient and sender receive message in real-time without delay
 
 **Error Responses:**
-- 400 Bad Request: Invalid message content
+- 400 Bad Request: Invalid message content or reply message not found/not in the same conversation
 - 401 Unauthorized: Not authenticated
 - 403 Forbidden: Not a participant in this conversation or blocked
 - 404 Not Found: Conversation not found
+
+**Reply Message Validation:**
+- If `reply_to_message_id` is provided, the system validates that:
+  - The replied message exists
+  - The replied message belongs to the same conversation
+  - If validation fails, returns 400 Bad Request with error message "Reply message not found or not in the same conversation"
 
 ---
 
@@ -705,23 +750,41 @@ Same as endpoint 5 (Mark Conversation as Read) - publishes to 3 MQTT topics for 
 The chat system uses MQTT for real-time message and status updates. Frontend applications should subscribe to the following MQTT topics:
 
 #### 7.1 New Message
-**Topic:** `chat/{userId}/messages`
+**Topic:** `chat/v1/users/{userId}/messages`
 
 **Payload:**
 ```json
 {
+  "type": "message",
+  "message_id": "90d5ec9f5824f70015a1c007",
   "conversation_id": "80d5ec9f5824f70015a1c004",
-  "message": {
-    "id": "90d5ec9f5824f70015a1c007",
-    "sender_id": "60d5ec9f5824f70015a1c001",
-    "type": "text",
+  "sender_id": "60d5ec9f5824f70015a1c001",
+  "server_ts": "2023-04-10T19:00:00.000Z",
+  "payload": {
     "text": "Hello!",
     "media": null,
-    "status": "sent",
-    "created_at": "2023-04-10T19:00:00.000Z"
+    "reply_to_message_id": "01HZ...ULID",
+    "reply_to_message": {
+      "message_id": "01HZ...ULID",
+      "sender_id": "60d5ec9f5824f70015a1c002",
+      "sender": {
+        "id": "60d5ec9f5824f70015a1c002",
+        "username": "janedoe",
+        "full_name": "Jane Doe",
+        "avatar_url": "https://example.com/jane-avatar.jpg"
+      },
+      "text": "Original message",
+      "type": "text",
+      "media": null,
+      "created_at": "2023-04-10T18:30:00.000Z"
+    }
   }
 }
 ```
+
+**Reply Message Fields in MQTT:**
+- `payload.reply_to_message_id`: (Optional) Message ID that this message is replying to
+- `payload.reply_to_message`: (Optional) Full information about the replied message, including sender details. Only present if `reply_to_message_id` is provided and the replied message exists in the same conversation.
 
 **When:** Sent immediately after a new message is created
 
@@ -1746,3 +1809,4 @@ For support, please contact:
 ## License
 
 This API is proprietary and confidential. Unauthorized use is prohibited.
+

@@ -47,3 +47,5 @@ else
   echo "   Check broker connection and permissions"
 fi
 
+
+

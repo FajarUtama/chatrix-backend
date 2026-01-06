@@ -67,3 +67,5 @@ export function isValidUlid(str: string): boolean {
   return /^[0-9A-HJKMNP-TV-Z]{26}$/.test(str);
 }
 
+
+
