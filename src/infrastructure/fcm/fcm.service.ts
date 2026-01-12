@@ -13,24 +13,61 @@ export class FcmService implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      const serviceAccountPath = this.configService.fcmServiceAccountPath;
+      // Check if Firebase is already initialized
+      if (admin.apps.length > 0) {
+        this.app = admin.app();
+        this.logger.log('Firebase Admin already initialized, using existing app');
+        return;
+      }
 
-      if (fs.existsSync(serviceAccountPath)) {
-        const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-
-        if (!admin.apps.length) {
+      // Try to get service account from environment variable first (as JSON string)
+      const serviceAccountJson = process.env.FCM_SERVICE_ACCOUNT_JSON;
+      if (serviceAccountJson) {
+        try {
+          const serviceAccount = JSON.parse(serviceAccountJson);
           this.app = admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
           });
-          this.logger.log('Firebase Admin initialized');
-        } else {
-          this.app = admin.app();
+          this.logger.log('✅ Firebase Admin initialized from FCM_SERVICE_ACCOUNT_JSON environment variable');
+          return;
+        } catch (parseError) {
+          this.logger.error('Failed to parse FCM_SERVICE_ACCOUNT_JSON:', parseError);
         }
+      }
+
+      // Fallback to file path
+      const serviceAccountPath = this.configService.fcmServiceAccountPath;
+      
+      // Resolve absolute path
+      const absolutePath = path.isAbsolute(serviceAccountPath)
+        ? serviceAccountPath
+        : path.resolve(process.cwd(), serviceAccountPath);
+
+      this.logger.log(`Looking for Firebase service account at: ${absolutePath}`);
+
+      if (fs.existsSync(absolutePath)) {
+        // Read and parse service account file
+        const serviceAccount = require(absolutePath);
+
+        // Initialize Firebase Admin
+        this.app = admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+
+        this.logger.log('✅ Firebase Admin initialized successfully');
+        this.logger.log(`   Service Account: ${absolutePath}`);
+        this.logger.log(`   Project ID: ${serviceAccount.project_id || 'N/A'}`);
       } else {
-        this.logger.warn(`FCM service account file not found at ${serviceAccountPath}. FCM features will be disabled.`);
+        this.logger.warn(`⚠️ FCM service account file not found at ${absolutePath}`);
+        this.logger.warn('   FCM features will be disabled.');
+        this.logger.warn('   To enable FCM:');
+        this.logger.warn('   1. Download service account key from Firebase Console');
+        this.logger.warn('   2. Save it as firebase-service-account.json in project root');
+        this.logger.warn('   3. Or set FCM_SERVICE_ACCOUNT_JSON environment variable');
       }
     } catch (error) {
-      this.logger.error('Failed to initialize Firebase Admin:', error);
+      this.logger.error('❌ Failed to initialize Firebase Admin:', error);
+      this.logger.error('   FCM notifications will not work until this is fixed.');
     }
   }
 

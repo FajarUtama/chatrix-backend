@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { Session, SessionDocument } from '../session/schemas/session.schema';
+import { DeviceToken, DeviceTokenDocument } from './schemas/device-token.schema';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ConfigService } from '../../config/config.service';
@@ -17,6 +18,7 @@ export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Session.name) private sessionModel: Model<SessionDocument>,
+    @InjectModel(DeviceToken.name) private deviceTokenModel: Model<DeviceTokenDocument>,
     private configService: ConfigService,
     private minioService: MinioService,
     private otpService: OtpService,
@@ -364,6 +366,33 @@ export class AuthService {
     user.email_verified = true;
     await user.save();
     return { message: 'Email verified successfully' };
+  }
+
+  /**
+   * Register or update FCM device token for push notifications
+   */
+  async registerDeviceToken(
+    userId: string,
+    deviceId: string,
+    fcmToken: string,
+    platform: 'android' | 'ios',
+  ): Promise<{ success: boolean; message: string }> {
+    await this.deviceTokenModel.findOneAndUpdate(
+      { user_id: userId, device_id: deviceId },
+      {
+        user_id: userId,
+        device_id: deviceId,
+        fcm_token: fcmToken,
+        platform,
+        last_used_at: new Date(),
+      },
+      { upsert: true, new: true },
+    ).exec();
+
+    return {
+      success: true,
+      message: 'Device token registered successfully',
+    };
   }
 
   /**

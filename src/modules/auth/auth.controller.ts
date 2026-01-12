@@ -10,6 +10,7 @@ import { VerifyResetOtpDto } from './dto/verify-reset-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RequestEmailVerificationDto } from './dto/request-email-verification.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { RegisterDeviceTokenDto } from './dto/register-device-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('Authentication')
@@ -241,6 +242,33 @@ export class AuthController {
   async verifyEmail(@Request() req: any, @Body() dto: VerifyEmailDto) {
     const userId = req.user.userId;
     return this.authService.verifyEmail(userId, dto.email, dto.otp_code);
+  }
+
+  @Post('device-token')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Register or update FCM device token for push notifications' })
+  @ApiResponse({
+    status: 200,
+    description: 'Device token registered successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: { type: 'string', example: 'Device token registered successfully' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid input data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async registerDeviceToken(@Request() req: any, @Body() dto: RegisterDeviceTokenDto) {
+    const userId = req.user.userId;
+    return this.authService.registerDeviceToken(
+      userId,
+      dto.device_id,
+      dto.fcm_token,
+      dto.platform,
+    );
   }
 }
 

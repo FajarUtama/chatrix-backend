@@ -10,6 +10,7 @@ import { ContactService } from '../contact/contact.service';
 import { UrlNormalizerService } from '../../common/services/url-normalizer.service';
 import { ReceiptService } from './receipt.service';
 import { StorageService, FileType } from '../storage/storage.service';
+import { NotificationService } from '../notification/notification.service';
 import { generateUlid } from '../../common/utils/ulid.util';
 
 @Injectable()
@@ -26,6 +27,7 @@ export class ChatService {
     private urlNormalizer: UrlNormalizerService,
     private receiptService: ReceiptService,
     private storageService: StorageService,
+    private notificationService: NotificationService,
   ) { }
 
   async createOrGetDirectConversation(userId1: string, userId2: string): Promise<ConversationDocument> {
@@ -335,6 +337,35 @@ export class ChatService {
           this.logger.error(`Failed to publish conversation update to sender ${senderId}:`, error);
         });
         this.logger.debug(`Published conversation update to chat/v1/users/${senderId}/conversations`);
+      }
+
+      // Send FCM push notification to recipient (if app is closed/background)
+      // This ensures messages can be received even when app is closed
+      try {
+        const recipientId = conversation.participant_ids.find(id => id !== senderId);
+        if (recipientId) {
+          const sender = await this.userService.findById(senderId);
+          const senderName = sender?.full_name || sender?.username || 'Someone';
+          
+          await this.notificationService.sendChatMessageNotification(
+            recipientId,
+            {
+              title: senderName,
+              body: messageText || '[Media]',
+              data: {
+                type: 'chat_message',
+                conversation_id: conversationId,
+                message_id: messageId,
+                sender_id: senderId,
+              },
+            },
+          );
+          
+          this.logger.debug(`Sent FCM notification to recipient ${recipientId} for message ${messageId}`);
+        }
+      } catch (error) {
+        // Log error but don't fail the request - notification is not critical
+        this.logger.error(`Failed to send FCM notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
 
       this.logger.log(`Message created successfully: ${message._id}`);

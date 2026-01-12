@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { User, UserSchema } from '../user/schemas/user.schema';
 import { Session, SessionSchema } from '../session/schemas/session.schema';
+import { DeviceToken, DeviceTokenSchema } from './schemas/device-token.schema';
 import { UserModule } from '../user/user.module';
 import { AppConfigModule } from '../../config/config.module';
 import { MinioModule } from '../../infrastructure/minio/minio.module';
@@ -14,6 +15,7 @@ import { MinioModule } from '../../infrastructure/minio/minio.module';
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: Session.name, schema: SessionSchema },
+      { name: DeviceToken.name, schema: DeviceTokenSchema },
     ]),
     UserModule,
     MinioModule,
