@@ -46,17 +46,38 @@ export class FcmService implements OnModuleInit {
       this.logger.log(`Looking for Firebase service account at: ${absolutePath}`);
 
       if (fs.existsSync(absolutePath)) {
-        // Read and parse service account file
-        const serviceAccount = require(absolutePath);
+        try {
+          // Read and parse service account file
+          this.logger.debug(`Reading service account file: ${absolutePath}`);
+          const serviceAccount = require(absolutePath);
 
-        // Initialize Firebase Admin
-        this.app = admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-        });
+          // Validate required fields
+          if (!serviceAccount.project_id) {
+            throw new Error('Service account file missing project_id field');
+          }
+          if (!serviceAccount.private_key) {
+            throw new Error('Service account file missing private_key field');
+          }
+          if (!serviceAccount.client_email) {
+            throw new Error('Service account file missing client_email field');
+          }
 
-        this.logger.log('✅ Firebase Admin initialized successfully');
-        this.logger.log(`   Service Account: ${absolutePath}`);
-        this.logger.log(`   Project ID: ${serviceAccount.project_id || 'N/A'}`);
+          this.logger.debug(`Service account file loaded successfully. Project ID: ${serviceAccount.project_id}`);
+
+          // Initialize Firebase Admin
+          this.app = admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+          });
+
+          this.logger.log('✅ Firebase Admin initialized successfully');
+          this.logger.log(`   Service Account: ${absolutePath}`);
+          this.logger.log(`   Project ID: ${serviceAccount.project_id || 'N/A'}`);
+        } catch (fileError: any) {
+          this.logger.error(`❌ Failed to load service account file: ${absolutePath}`);
+          this.logger.error(`   Error: ${fileError.message}`);
+          this.logger.error(`   Stack: ${fileError.stack}`);
+          this.logger.error('   FCM features will be disabled.');
+        }
       } else {
         this.logger.warn(`⚠️ FCM service account file not found at ${absolutePath}`);
         this.logger.warn('   FCM features will be disabled.');
@@ -64,6 +85,8 @@ export class FcmService implements OnModuleInit {
         this.logger.warn('   1. Download service account key from Firebase Console');
         this.logger.warn('   2. Save it as firebase-service-account.json in project root');
         this.logger.warn('   3. Or set FCM_SERVICE_ACCOUNT_JSON environment variable');
+        this.logger.warn(`   Current working directory: ${process.cwd()}`);
+        this.logger.warn(`   Looking for file at: ${absolutePath}`);
       }
     } catch (error) {
       this.logger.error('❌ Failed to initialize Firebase Admin:', error);
