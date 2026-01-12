@@ -347,6 +347,8 @@ export class ChatService {
           const sender = await this.userService.findById(senderId);
           const senderName = sender?.full_name || sender?.username || 'Someone';
           
+          this.logger.debug(`Attempting to send FCM notification to recipient ${recipientId} for message ${messageId}`);
+          
           await this.notificationService.sendChatMessageNotification(
             recipientId,
             {
@@ -361,11 +363,13 @@ export class ChatService {
             },
           );
           
-          this.logger.debug(`Sent FCM notification to recipient ${recipientId} for message ${messageId}`);
+          this.logger.debug(`FCM notification process completed for recipient ${recipientId}`);
+        } else {
+          this.logger.warn(`No recipient found for conversation ${conversationId} (sender: ${senderId})`);
         }
       } catch (error) {
         // Log error but don't fail the request - notification is not critical
-        this.logger.error(`Failed to send FCM notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        this.logger.error(`Failed to send FCM notification: ${error instanceof Error ? error.message : 'Unknown error'}`, error instanceof Error ? error.stack : undefined);
       }
 
       this.logger.log(`Message created successfully: ${message._id}`);

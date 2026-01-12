@@ -63,6 +63,15 @@ export class HealthController {
                                 bucket: { type: 'string', example: 'chatrix-media' },
                             },
                         },
+                        firebase: {
+                            type: 'object',
+                            properties: {
+                                status: { type: 'string', example: 'up' },
+                                initialized: { type: 'boolean', example: true },
+                                project_id: { type: 'string', example: 'your-project-id' },
+                                messaging_available: { type: 'boolean', example: true },
+                            },
+                        },
                     },
                 },
             },

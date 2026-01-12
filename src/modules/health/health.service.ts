@@ -5,8 +5,10 @@ import { User, UserDocument } from '../user/schemas/user.schema';
 import { ConfigService } from '../../config/config.service';
 import { MinioService } from '../../infrastructure/minio/minio.service';
 import { MqttService } from '../../infrastructure/mqtt/mqtt.service';
+import { FcmService } from '../../infrastructure/fcm/fcm.service';
 import Redis from 'ioredis';
 import * as mqtt from 'mqtt';
+import * as admin from 'firebase-admin';
 
 @Injectable()
 export class HealthService {
@@ -19,6 +21,7 @@ export class HealthService {
         private configService: ConfigService,
         private minioService: MinioService,
         private mqttService: MqttService,
+        private fcmService: FcmService,
     ) {
         this.startTime = Date.now();
 
@@ -44,6 +47,7 @@ export class HealthService {
             this.checkRedis(),
             this.checkMqtt(),
             this.checkMinio(),
+            this.checkFirebase(),
         ]);
 
         // Use MqttService connection info instead of separate client check
@@ -53,11 +57,11 @@ export class HealthService {
             ...mqttInfo,
         };
 
-        const [backend, database, redis, mqttOld, minio] = services.map(result =>
+        const [backend, database, redis, mqttOld, minio, firebase] = services.map(result =>
             result.status === 'fulfilled' ? result.value : { status: 'down' as const, error: (result.reason as Error)?.message || 'Unknown error' }
         );
 
-        const allUp = [backend, database, redis, mqttHealth, minio].every((s: any) => s.status === 'up');
+        const allUp = [backend, database, redis, mqttHealth, minio, firebase].every((s: any) => s.status === 'up');
 
         return {
             status: allUp ? 'ok' : 'degraded',
@@ -66,8 +70,9 @@ export class HealthService {
                 backend,
                 database,
                 redis,
-                        mqtt: mqttHealth,
+                mqtt: mqttHealth,
                 minio,
+                firebase,
             },
         };
     }
@@ -192,6 +197,52 @@ export class HealthService {
                 error: (error as Error).message,
                 endpoint: config.endPoint,
                 port: config.port,
+            };
+        }
+    }
+
+    private async checkFirebase() {
+        try {
+            // Check if Firebase Admin is initialized
+            if (admin.apps.length === 0) {
+                return {
+                    status: 'down',
+                    error: 'Firebase Admin not initialized',
+                    initialized: false,
+                    messaging_available: false,
+                };
+            }
+
+            const app = admin.app();
+            const projectId = app.options.projectId || 'N/A';
+
+            // Test if messaging() is available
+            let messagingAvailable = false;
+            try {
+                const messaging = admin.messaging();
+                messagingAvailable = messaging !== null && messaging !== undefined;
+            } catch (error) {
+                return {
+                    status: 'down',
+                    error: `Messaging not available: ${(error as Error).message}`,
+                    initialized: true,
+                    project_id: projectId,
+                    messaging_available: false,
+                };
+            }
+
+            return {
+                status: 'up',
+                initialized: true,
+                project_id: projectId,
+                messaging_available: messagingAvailable,
+            };
+        } catch (error) {
+            return {
+                status: 'down',
+                error: (error as Error).message,
+                initialized: false,
+                messaging_available: false,
             };
         }
     }
