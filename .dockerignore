@@ -1,0 +1,26 @@
+# Docker ignore file
+# File yang TIDAK akan di-copy ke Docker image saat build
+
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+.git/
+.gitignore
+
+# JANGAN ignore firebase-service-account.json jika ingin ikut di-build
+# firebase-service-account.json
+
+# Dokumentasi tidak perlu di image
+*.md
+!README.md
+
+# Test files
+test/
+*.test.ts
+*.spec.ts
+
+# Development files
+.vscode/
+.idea/

@@ -10,6 +10,32 @@ Jika Firebase service account tidak bisa connect saat deploy ke Docker di VM, bi
 
 ---
 
+## ⚠️ **Catatan: Docker Compose Command**
+
+Di beberapa VM, Docker Compose menggunakan command berbeda:
+- **Docker Compose V1**: `docker-compose` (dengan dash)
+- **Docker Compose V2**: `docker compose` (tanpa dash, sebagai plugin)
+
+**Cek versi yang terinstall:**
+```bash
+# Cek apakah docker compose tersedia
+docker compose version
+
+# Atau cek docker-compose
+docker-compose --version
+```
+
+**Jika `docker-compose` tidak ditemukan, gunakan:**
+```bash
+# Ganti semua command docker-compose dengan docker compose
+docker compose logs -f chatrix-be | grep FcmService
+docker compose up -d
+docker compose down
+docker compose build --no-cache
+```
+
+---
+
 ## ✅ **Solusi 1: Pakai Environment Variable (PALING DIREKOMENDASIKAN)**
 
 ### Kelebihan:
@@ -82,6 +108,12 @@ services:
 #### 5. Rebuild dan restart container
 
 ```bash
+# Gunakan docker compose (tanpa dash) jika docker-compose tidak ditemukan
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+
+# Atau jika docker-compose tersedia:
 docker-compose down
 docker-compose build --no-cache
 docker-compose up -d
@@ -90,7 +122,11 @@ docker-compose up -d
 #### 6. Cek log untuk verifikasi
 
 ```bash
-docker-compose logs -f chatrix-be
+# Gunakan docker compose (tanpa dash)
+docker compose logs -f chatrix-be | grep FcmService
+
+# Atau jika docker-compose tersedia:
+docker-compose logs -f chatrix-be | grep FcmService
 ```
 
 Cari log ini:
@@ -137,15 +173,16 @@ services:
 #### 4. Rebuild dan restart
 
 ```bash
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+# Gunakan docker compose (tanpa dash)
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
 #### 5. Cek log
 
 ```bash
-docker-compose logs -f chatrix-be
+docker compose logs -f chatrix-be | grep FcmService
 ```
 
 Cari log ini:
@@ -158,6 +195,32 @@ Cari log ini:
 ---
 
 ## 🔍 **Troubleshooting**
+
+### Error: "docker-compose: command not found"
+
+**Solusi:**
+```bash
+# Cek apakah docker compose (V2) tersedia
+docker compose version
+
+# Jika tersedia, gunakan docker compose (tanpa dash) untuk semua command
+# Contoh:
+docker compose logs -f chatrix-be
+docker compose up -d
+docker compose exec chatrix-be ls -la /app
+```
+
+**Atau install docker-compose V1:**
+```bash
+# Download docker-compose
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+
+# Set permissions
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Verify installation
+docker-compose --version
+```
 
 ### Error: "FCM service account file not found"
 
@@ -172,10 +235,10 @@ Cari log ini:
 ls -la firebase-service-account.json
 
 # Cek apakah file ter-mount di container
-docker-compose exec chatrix-be ls -la /app/firebase-service-account.json
+docker compose exec chatrix-be ls -la /app/firebase-service-account.json
 
 # Cek environment variable di container
-docker-compose exec chatrix-be env | grep FCM
+docker compose exec chatrix-be env | grep FCM
 ```
 
 ### Error: "Failed to parse FCM_SERVICE_ACCOUNT_JSON"
@@ -187,7 +250,7 @@ docker-compose exec chatrix-be env | grep FCM
 **Solusi:**
 ```bash
 # Test parse JSON di container
-docker-compose exec chatrix-be node -e "console.log(JSON.parse(process.env.FCM_SERVICE_ACCOUNT_JSON))"
+docker compose exec chatrix-be node -e "console.log(JSON.parse(process.env.FCM_SERVICE_ACCOUNT_JSON))"
 
 # Jika error, berarti JSON string tidak valid
 # Pastikan di .env menggunakan single quotes dan tidak ada line break
@@ -220,6 +283,7 @@ Sebelum deploy, pastikan:
 - [ ] File permissions sudah benar (`chmod 600` jika pakai file)
 - [ ] Container sudah di-rebuild setelah perubahan
 - [ ] Log menunjukkan Firebase initialized successfully
+- [ ] Menggunakan command yang benar (`docker compose` atau `docker-compose`)
 
 ---
 
@@ -234,13 +298,13 @@ cat firebase-service-account.json | jq -c > fcm-json-string.txt
 
 # 3. Update docker-compose.yml (uncomment environment variable)
 
-# 4. Deploy
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+# 4. Deploy (gunakan docker compose atau docker-compose sesuai yang tersedia)
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 
 # 5. Cek log
-docker-compose logs -f chatrix-be | grep FcmService
+docker compose logs -f chatrix-be | grep FcmService
 ```
 
 ---
@@ -255,6 +319,10 @@ docker-compose logs -f chatrix-be | grep FcmService
 - ❌ Copy file langsung ke Docker image (tidak aman)
 - ❌ Hardcode credentials di code
 - ❌ Commit file ke Git
+
+**Catatan Command:**
+- Gunakan `docker compose` (tanpa dash) jika `docker-compose` tidak ditemukan
+- Atau install docker-compose V1 jika lebih familiar
 
 ---
 

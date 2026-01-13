@@ -28,6 +28,12 @@ COPY --from=builder /app/dist ./dist
 # Copy other necessary files (if any)
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
+# Copy Firebase service account file
+# WARNING: This includes credentials in the image. Not recommended for production!
+# Better to use environment variable or volume mount instead.
+# If file doesn't exist, build will fail - make sure file is in root directory before building
+COPY --from=builder /app/firebase-service-account.json ./firebase-service-account.json
+
 # Expose port
 EXPOSE 3000
 
