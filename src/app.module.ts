@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppConfigModule } from './config/config.module';
 import { ConfigService } from './config/config.service';
+import { FirebaseModule } from './firebase/firebase.module';
 import { MqttModule } from './infrastructure/mqtt/mqtt.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
 import { MinioModule } from './infrastructure/minio/minio.module';
@@ -32,6 +33,7 @@ import { CommonModule } from './common/common.module';
     ConfigModule.forRoot({ isGlobal: true }),
     AppConfigModule,
     CommonModule,
+    FirebaseModule,
     MongooseModule.forRootAsync({
       imports: [AppConfigModule],
       useFactory: (configService: ConfigService) => ({

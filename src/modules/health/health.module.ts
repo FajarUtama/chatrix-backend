@@ -4,6 +4,7 @@ import { HealthController } from './health.controller';
 import { HealthService } from './health.service';
 import { User, UserSchema } from '../user/schemas/user.schema';
 import { AppConfigModule } from '../../config/config.module';
+import { FirebaseModule } from '../../firebase/firebase.module';
 import { MinioModule } from '../../infrastructure/minio/minio.module';
 import { MqttModule } from '../../infrastructure/mqtt/mqtt.module';
 import { FcmModule } from '../../infrastructure/fcm/fcm.module';
@@ -12,6 +13,7 @@ import { FcmModule } from '../../infrastructure/fcm/fcm.module';
     imports: [
         MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
         AppConfigModule,
+        FirebaseModule,
         MinioModule,
         MqttModule,
         FcmModule,

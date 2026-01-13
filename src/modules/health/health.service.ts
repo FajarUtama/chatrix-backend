@@ -5,12 +5,9 @@ import { User, UserDocument } from '../user/schemas/user.schema';
 import { ConfigService } from '../../config/config.service';
 import { MinioService } from '../../infrastructure/minio/minio.service';
 import { MqttService } from '../../infrastructure/mqtt/mqtt.service';
-import { FcmService } from '../../infrastructure/fcm/fcm.service';
+import { FirebaseService } from '../../firebase/firebase.service';
 import Redis from 'ioredis';
 import * as mqtt from 'mqtt';
-import * as admin from 'firebase-admin';
-import * as path from 'path';
-import * as fs from 'fs';
 
 @Injectable()
 export class HealthService {
@@ -23,7 +20,7 @@ export class HealthService {
         private configService: ConfigService,
         private minioService: MinioService,
         private mqttService: MqttService,
-        private fcmService: FcmService,
+        private firebaseService: FirebaseService,
     ) {
         this.startTime = Date.now();
 
@@ -205,108 +202,38 @@ export class HealthService {
 
     private async checkFirebase() {
         try {
-            // Check if Firebase Admin is initialized
-            if (admin.apps.length === 0) {
+            const status = this.firebaseService.getStatus();
+            
+            if (!status.initialized || !status.messagingAvailable) {
                 return {
                     status: 'down',
-                    error: 'Firebase Admin not initialized',
-                    initialized: false,
-                    messaging_available: false,
-                };
-            }
-
-            const app = admin.app();
-            const projectId = app.options.projectId || 'N/A';
-
-            // Test if messaging() is available
-            let messagingAvailable = false;
-            try {
-                const messaging = admin.messaging();
-                messagingAvailable = messaging !== null && messaging !== undefined;
-            } catch (error) {
-                return {
-                    status: 'down',
-                    error: `Messaging not available: ${(error as Error).message}`,
-                    initialized: true,
-                    project_id: projectId,
-                    messaging_available: false,
+                    error: 'Firebase not initialized or messaging not available',
+                    ...status,
                 };
             }
 
             return {
                 status: 'up',
-                initialized: true,
-                project_id: projectId,
-                messaging_available: messagingAvailable,
+                ...status,
             };
         } catch (error) {
             return {
                 status: 'down',
                 error: (error as Error).message,
                 initialized: false,
-                messaging_available: false,
+                messagingAvailable: false,
             };
         }
     }
 
     getFirebaseDebug() {
-        const debug: any = {
-            firebase_apps_count: admin.apps.length,
+        const status = this.firebaseService.getStatus();
+        return {
+            ...status,
+            secret_name_set: !!process.env.FIREBASE_SECRET_NAME,
+            env_var_set: !!process.env.FCM_SERVICE_ACCOUNT_JSON,
             current_working_directory: process.cwd(),
-            environment_variable_set: !!process.env.FCM_SERVICE_ACCOUNT_JSON,
-            service_account_path: this.configService.fcmServiceAccountPath,
         };
-
-        // Check file path
-        const serviceAccountPath = this.configService.fcmServiceAccountPath;
-        const absolutePath = path.isAbsolute(serviceAccountPath)
-            ? serviceAccountPath
-            : path.resolve(process.cwd(), serviceAccountPath);
-        
-        debug.absolute_path = absolutePath;
-        debug.file_exists = fs.existsSync(absolutePath);
-
-        // Check file if exists
-        if (fs.existsSync(absolutePath)) {
-            try {
-                const fileContent = fs.readFileSync(absolutePath, 'utf8');
-                const parsed = JSON.parse(fileContent);
-                debug.file_valid_json = true;
-                debug.file_has_project_id = !!parsed.project_id;
-                debug.file_has_private_key = !!parsed.private_key;
-                debug.file_has_client_email = !!parsed.client_email;
-                debug.file_project_id = parsed.project_id || 'N/A';
-            } catch (error: any) {
-                debug.file_valid_json = false;
-                debug.file_error = error.message;
-            }
-        }
-
-        // Check Firebase initialization
-        if (admin.apps.length > 0) {
-            try {
-                const app = admin.app();
-                debug.firebase_initialized = true;
-                debug.firebase_project_id = app.options.projectId || 'N/A';
-                
-                // Test messaging
-                try {
-                    const messaging = admin.messaging();
-                    debug.messaging_available = messaging !== null && messaging !== undefined;
-                } catch (error: any) {
-                    debug.messaging_available = false;
-                    debug.messaging_error = error.message;
-                }
-            } catch (error: any) {
-                debug.firebase_initialized = false;
-                debug.firebase_error = error.message;
-            }
-        } else {
-            debug.firebase_initialized = false;
-            debug.firebase_error = 'No Firebase apps initialized';
-        }
-
-        return debug;
     }
 
     onModuleDestroy() {
