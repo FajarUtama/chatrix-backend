@@ -1162,7 +1162,311 @@ The chat system uses MQTT for real-time message and status updates. Frontend app
 
 ## Notifications
 
-### 1. Get Notifications
+### Frontend Implementation Guide
+
+#### 1. Register Device Token (FCM)
+
+**Endpoint:** `POST /auth/device-token`
+
+**Description:** Register or update FCM device token for push notifications. **This must be called after user login/register to enable push notifications.**
+
+**Headers:**
+- `Authorization`: Bearer token (required)
+- `Content-Type`: application/json
+
+**Request Body:**
+```json
+{
+  "device_id": "device-123-456",
+  "fcm_token": "dK3jH9fL2mN5pQ8rT1vW4xY7zA0bC3dE6fG9hI2jK5",
+  "platform": "android"
+}
+```
+
+**Fields:**
+- `device_id`: (Required) Device ID that was used during login/registration
+- `fcm_token`: (Required) FCM token from Firebase Cloud Messaging
+- `platform`: (Required) Platform type - `"android"` or `"ios"`
+
+**Response (Success - 200 OK):**
+```json
+{
+  "success": true,
+  "message": "Device token registered successfully"
+}
+```
+
+**Error Responses:**
+- 400 Bad Request: Invalid input data
+- 401 Unauthorized: Invalid or missing authentication token
+
+---
+
+#### 2. Frontend Implementation Steps
+
+##### Step 1: Setup Firebase Cloud Messaging (FCM)
+
+**Flutter:**
+```dart
+// pubspec.yaml
+dependencies:
+  firebase_core: ^2.24.0
+  firebase_messaging: ^14.7.0
+
+// Initialize Firebase
+await Firebase.initializeApp();
+
+// Get FCM token
+FirebaseMessaging messaging = FirebaseMessaging.instance;
+String? fcmToken = await messaging.getToken();
+
+// Request permission (iOS)
+NotificationSettings settings = await messaging.requestPermission(
+  alert: true,
+  badge: true,
+  sound: true,
+);
+```
+
+**React Native:**
+```javascript
+// Install packages
+npm install @react-native-firebase/app @react-native-firebase/messaging
+
+// Get FCM token
+import messaging from '@react-native-firebase/messaging';
+
+async function getFCMToken() {
+  const fcmToken = await messaging().getToken();
+  return fcmToken;
+}
+
+// Request permission (iOS)
+const authStatus = await messaging().requestPermission();
+```
+
+##### Step 2: Register Token to Backend
+
+**After user login/register, register the FCM token:**
+
+```dart
+// Flutter example
+Future<void> registerDeviceToken(String accessToken, String deviceId) async {
+  final fcmToken = await FirebaseMessaging.instance.getToken();
+  
+  if (fcmToken != null) {
+    final response = await http.post(
+      Uri.parse('https://api.chatrix.com/auth/device-token'),
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'device_id': deviceId,
+        'fcm_token': fcmToken,
+        'platform': Platform.isAndroid ? 'android' : 'ios',
+      }),
+    );
+    
+    if (response.statusCode == 200) {
+      print('Device token registered successfully');
+    }
+  }
+}
+```
+
+**JavaScript/React Native:**
+```javascript
+async function registerDeviceToken(accessToken, deviceId) {
+  const fcmToken = await messaging().getToken();
+  
+  const response = await fetch('https://api.chatrix.com/auth/device-token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      device_id: deviceId,
+      fcm_token: fcmToken,
+      platform: Platform.OS === 'android' ? 'android' : 'ios',
+    }),
+  });
+  
+  if (response.ok) {
+    console.log('Device token registered successfully');
+  }
+}
+```
+
+##### Step 3: Handle Incoming Notifications
+
+**Flutter:**
+```dart
+// Handle foreground notifications
+FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+  print('Got a message whilst in the foreground!');
+  print('Message data: ${message.data}');
+  
+  if (message.notification != null) {
+    print('Message also contained a notification: ${message.notification}');
+    // Show local notification
+    showLocalNotification(message);
+  }
+});
+
+// Handle background notifications
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print('Handling a background message ${message.messageId}');
+  // Handle notification data
+  handleNotificationData(message.data);
+}
+
+// Register background handler
+FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+// Handle notification tap (when app is in background/terminated)
+FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+  print('A new onMessageOpenedApp event was published!');
+  // Navigate to specific screen based on notification data
+  navigateToScreen(message.data);
+});
+```
+
+**React Native:**
+```javascript
+// Handle foreground notifications
+messaging().onMessage(async remoteMessage => {
+  console.log('FCM Message received in foreground:', remoteMessage);
+  // Show local notification
+  showLocalNotification(remoteMessage);
+});
+
+// Handle notification tap (when app is in background/terminated)
+messaging().onNotificationOpenedApp(remoteMessage => {
+  console.log('Notification opened app:', remoteMessage);
+  // Navigate to specific screen
+  navigateToScreen(remoteMessage.data);
+});
+
+// Check if app was opened from terminated state
+messaging()
+  .getInitialNotification()
+  .then(remoteMessage => {
+    if (remoteMessage) {
+      console.log('Notification opened app from terminated state');
+      navigateToScreen(remoteMessage.data);
+    }
+  });
+```
+
+##### Step 4: Handle Token Refresh
+
+**FCM token can change, so listen for token refresh:**
+
+**Flutter:**
+```dart
+FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+  print('FCM Token refreshed: $newToken');
+  // Re-register token to backend
+  registerDeviceToken(accessToken, deviceId);
+});
+```
+
+**React Native:**
+```javascript
+messaging().onTokenRefresh(async (newToken) => {
+  console.log('FCM Token refreshed:', newToken);
+  // Re-register token to backend
+  await registerDeviceToken(accessToken, deviceId);
+});
+```
+
+---
+
+#### 3. Notification Payload Structure
+
+When backend sends a notification, the payload structure is:
+
+```json
+{
+  "notification": {
+    "title": "New Message",
+    "body": "You have a new message from John Doe"
+  },
+  "data": {
+    "type": "chat_message",
+    "conversation_id": "80d5ec9f5824f70015a1c004",
+    "sender_id": "60d5ec9f5824f70015a1c001",
+    "message_id": "90d5ec9f5824f70015a1c007"
+  }
+}
+```
+
+**Notification Types:**
+- `chat_message`: New chat message received
+- `like`: Someone liked your post
+- `comment`: Someone commented on your post
+- `follow`: Someone followed you
+- `mention`: Someone mentioned you
+
+**Handle Different Notification Types:**
+
+```dart
+// Flutter example
+void handleNotificationData(Map<String, dynamic> data) {
+  final type = data['type'];
+  
+  switch (type) {
+    case 'chat_message':
+      // Navigate to chat detail
+      navigateToChat(data['conversation_id']);
+      break;
+    case 'like':
+    case 'comment':
+      // Navigate to post detail
+      navigateToPost(data['post_id']);
+      break;
+    case 'follow':
+      // Navigate to user profile
+      navigateToProfile(data['user_id']);
+      break;
+  }
+}
+```
+
+---
+
+#### 4. Complete Implementation Flow
+
+1. **App Startup:**
+   - Initialize Firebase
+   - Request notification permissions
+   - Get FCM token
+
+2. **After Login/Register:**
+   - Register FCM token to backend via `POST /auth/device-token`
+   - Store device_id and fcm_token locally
+
+3. **Listen for Notifications:**
+   - Setup foreground notification handler
+   - Setup background notification handler
+   - Setup notification tap handler
+
+4. **Handle Token Refresh:**
+   - Listen for token refresh events
+   - Re-register token to backend when token changes
+
+5. **Handle Notification Actions:**
+   - Parse notification data
+   - Navigate to appropriate screen
+   - Update UI based on notification type
+
+---
+
+#### 5. Get Notifications List
 
 **Endpoint:** `GET /notifications`
 
@@ -1221,6 +1525,29 @@ The chat system uses MQTT for real-time message and status updates. Frontend app
 
 **Error Responses:**
 - 401 Unauthorized: Not authenticated
+
+---
+
+#### 6. Test Notification (Development Only)
+
+**Endpoint:** `GET /health/test-notification?token=YOUR_FCM_TOKEN`
+
+**Description:** Test FCM notification delivery. **Only available in development/testing.**
+
+**Query Parameters:**
+- `token`: (Required) FCM device token to test
+
+**Response (Success - 200 OK):**
+```json
+{
+  "success": true,
+  "message": "Test notification sent successfully",
+  "token": "dK3jH9fL2mN5pQ8rT1vW4xY7zA0bC..."
+}
+```
+
+**Error Responses:**
+- 400 Bad Request: Invalid token or Firebase not initialized
 
 ---
 
