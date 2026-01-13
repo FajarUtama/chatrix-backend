@@ -5,20 +5,6 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
-    # Opsi 1: Gunakan environment variable (RECOMMENDED)
-    # Uncomment baris di bawah jika ingin pakai FCM_SERVICE_ACCOUNT_JSON dari .env
-    # environment:
-    #   - FCM_SERVICE_ACCOUNT_JSON=${FCM_SERVICE_ACCOUNT_JSON}
-    
-    # Opsi 2: File sudah di-build ke image (tidak perlu volume mount)
-    # File firebase-service-account.json sudah di-copy ke image saat build
-    # Pastikan file ada di root directory sebelum build
-    environment:
-      - FCM_SERVICE_ACCOUNT_PATH=/app/firebase-service-account.json
-    
-    # Opsi 3: Mount file dari host (jika tidak ingin di-build ke image)
-    # volumes:
-    #   - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     ports:
       - "3000:3000"
     depends_on:
@@ -35,12 +21,8 @@ services:
 
   mosquitto:
     image: eclipse-mosquitto:2
-    ports:
-      - "1883:1883"   # ❌ boleh dihapus kalau tidak perlu akses dari luar
     restart: unless-stopped
 
   minio:
     image: minio/minio
-    ports:
-      - "9000:9000"   # ❌ boleh dihapus kalau tidak perlu akses dari luar
     restart: unless-stopped
