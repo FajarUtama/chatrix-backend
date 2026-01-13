@@ -1,8 +1,23 @@
 services:
   chatrix-be:
-    build: ../apps/chatrix-be
+    build:
+      context: .
+      dockerfile: Dockerfile
     env_file:
-      - ../apps/chatrix-be/.env
+      - .env
+    # Opsi 1: Gunakan environment variable (RECOMMENDED)
+    # Uncomment baris di bawah jika ingin pakai FCM_SERVICE_ACCOUNT_JSON dari .env
+    # environment:
+    #   - FCM_SERVICE_ACCOUNT_JSON=${FCM_SERVICE_ACCOUNT_JSON}
+    
+    # Opsi 2: Mount file firebase-service-account.json dari host
+    # Uncomment baris di bawah jika ingin pakai file (pastikan file sudah ada di VM)
+    volumes:
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+    environment:
+      - FCM_SERVICE_ACCOUNT_PATH=/app/firebase-service-account.json
+    ports:
+      - "3000:3000"
     depends_on:
       - redis
       - mosquitto

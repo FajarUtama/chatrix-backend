@@ -16,10 +16,20 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copy standalone output
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+# Copy package files
+COPY package*.json ./
 
+# Install production dependencies only
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy built application
+COPY --from=builder /app/dist ./dist
+
+# Copy other necessary files (if any)
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+
+# Expose port
 EXPOSE 3000
-CMD ["node", "server.js"]
+
+# Run the application
+CMD ["node", "dist/main.js"]

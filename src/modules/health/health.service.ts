@@ -9,6 +9,8 @@ import { FcmService } from '../../infrastructure/fcm/fcm.service';
 import Redis from 'ioredis';
 import * as mqtt from 'mqtt';
 import * as admin from 'firebase-admin';
+import * as path from 'path';
+import * as fs from 'fs';
 
 @Injectable()
 export class HealthService {
@@ -245,6 +247,66 @@ export class HealthService {
                 messaging_available: false,
             };
         }
+    }
+
+    getFirebaseDebug() {
+        const debug: any = {
+            firebase_apps_count: admin.apps.length,
+            current_working_directory: process.cwd(),
+            environment_variable_set: !!process.env.FCM_SERVICE_ACCOUNT_JSON,
+            service_account_path: this.configService.fcmServiceAccountPath,
+        };
+
+        // Check file path
+        const serviceAccountPath = this.configService.fcmServiceAccountPath;
+        const absolutePath = path.isAbsolute(serviceAccountPath)
+            ? serviceAccountPath
+            : path.resolve(process.cwd(), serviceAccountPath);
+        
+        debug.absolute_path = absolutePath;
+        debug.file_exists = fs.existsSync(absolutePath);
+
+        // Check file if exists
+        if (fs.existsSync(absolutePath)) {
+            try {
+                const fileContent = fs.readFileSync(absolutePath, 'utf8');
+                const parsed = JSON.parse(fileContent);
+                debug.file_valid_json = true;
+                debug.file_has_project_id = !!parsed.project_id;
+                debug.file_has_private_key = !!parsed.private_key;
+                debug.file_has_client_email = !!parsed.client_email;
+                debug.file_project_id = parsed.project_id || 'N/A';
+            } catch (error: any) {
+                debug.file_valid_json = false;
+                debug.file_error = error.message;
+            }
+        }
+
+        // Check Firebase initialization
+        if (admin.apps.length > 0) {
+            try {
+                const app = admin.app();
+                debug.firebase_initialized = true;
+                debug.firebase_project_id = app.options.projectId || 'N/A';
+                
+                // Test messaging
+                try {
+                    const messaging = admin.messaging();
+                    debug.messaging_available = messaging !== null && messaging !== undefined;
+                } catch (error: any) {
+                    debug.messaging_available = false;
+                    debug.messaging_error = error.message;
+                }
+            } catch (error: any) {
+                debug.firebase_initialized = false;
+                debug.firebase_error = error.message;
+            }
+        } else {
+            debug.firebase_initialized = false;
+            debug.firebase_error = 'No Firebase apps initialized';
+        }
+
+        return debug;
     }
 
     onModuleDestroy() {

@@ -80,4 +80,14 @@ export class HealthController {
     async getHealth() {
         return this.healthService.getHealth();
     }
+
+    @Get('firebase-debug')
+    @ApiOperation({ summary: 'Debug Firebase initialization status' })
+    @ApiResponse({
+        status: 200,
+        description: 'Firebase debug information',
+    })
+    async getFirebaseDebug() {
+        return this.healthService.getFirebaseDebug();
+    }
 }
