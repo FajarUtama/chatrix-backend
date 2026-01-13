@@ -4,4 +4,10 @@ dist/
 *.log
 .DS_Store
 firebase-service-account.json
+chatrix-postman-collection.json
+
+# Ignore all .md files except DOCUMENTATION.md
+*.md
+!DOCUMENTATION.md
+
 

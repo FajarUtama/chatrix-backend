@@ -36,6 +36,6 @@ FCM_SERVICE_ACCOUNT_JSON='$jsonContent'
     Write-Host ""
 } catch {
     Write-Host "❌ Error: Gagal memproses file JSON" -ForegroundColor Red
-    Write-Host "   Error: $_" -ForegroundColor Red
+    Write-Host "   Error: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
