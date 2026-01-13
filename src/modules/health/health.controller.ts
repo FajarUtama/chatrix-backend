@@ -1,11 +1,15 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { HealthService } from './health.service';
+import { FcmService } from '../../infrastructure/fcm/fcm.service';
 
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {
-    constructor(private readonly healthService: HealthService) { }
+    constructor(
+        private readonly healthService: HealthService,
+        private readonly fcmService: FcmService,
+    ) { }
 
     @Get()
     @ApiOperation({ summary: 'Health check for all services' })
@@ -89,5 +93,37 @@ export class HealthController {
     })
     async getFirebaseDebug() {
         return this.healthService.getFirebaseDebug();
+    }
+
+    @Get('test-notification')
+    @ApiOperation({ summary: 'Test FCM notification (for testing only)' })
+    @ApiQuery({ name: 'token', required: true, description: 'FCM device token' })
+    @ApiResponse({
+        status: 200,
+        description: 'Test notification sent',
+    })
+    async testNotification(@Query('token') token: string) {
+        try {
+            await this.fcmService.sendNotification(token, {
+                title: 'Test Notification',
+                body: 'Ini adalah test notifikasi dari Chatrix Backend! 🎉',
+                data: {
+                    type: 'test',
+                    timestamp: new Date().toISOString(),
+                },
+            });
+
+            return {
+                success: true,
+                message: 'Test notification sent successfully',
+                token: token.substring(0, 20) + '...',
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                message: 'Failed to send test notification',
+                error: error.message,
+            };
+        }
     }
 }
