@@ -203,7 +203,7 @@ export class AuthController {
 
   @Post('email/request-verification')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Request email verification OTP' })
   @ApiResponse({
     status: 200,
@@ -224,7 +224,7 @@ export class AuthController {
 
   @Post('email/verify')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Verify email with OTP code' })
   @ApiResponse({
     status: 200,
@@ -246,7 +246,7 @@ export class AuthController {
 
   @Post('device-token')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Register or update FCM device token for push notifications' })
   @ApiResponse({
     status: 200,
