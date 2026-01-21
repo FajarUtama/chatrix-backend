@@ -21,3 +21,10 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"   # ❌ boleh dihapus kalau tidak perlu akses dari luar
+      - "9001:9001"
+    restart: unless-stopped
